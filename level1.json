@@ -1,13 +1,21 @@
 {
-  "name": "Dungeon Escape",
-  "rows": 5,
-  "cols": 5,
+  "name": "The X-Dungeon",
+  "story": "You have been trapped in the center of the cross. The only way out is through the golden gate, but the shadows are moving...",
+  "rules": "Avoid red blocks. Reach the gold block to win.",
+  "rows": 11,
+  "cols": 11,
   "tilesize": 40,
   "grid": [
-    1, 1, 1, 1, 1,
-    1, 2, 0, 3, 1,
-    1, 0, 1, 0, 1,
-    1, 0, 0, 4, 1,
-    1, 1, 1, 1, 1
+    1,1,1,1,1,1,1,1,1,1,1,
+    1,2,0,0,0,1,0,0,0,4,1,
+    1,0,1,0,0,1,0,0,1,0,1,
+    1,0,0,1,0,1,0,1,0,0,1,
+    1,0,0,0,1,0,1,0,0,0,1,
+    1,1,1,1,0,0,0,1,1,1,1,
+    1,0,0,0,1,0,1,0,0,0,1,
+    1,0,0,1,0,1,0,1,0,0,1,
+    1,0,1,0,0,1,3,0,1,0,1,
+    1,3,0,0,0,1,0,0,0,3,1,
+    1,1,1,1,1,1,1,1,1,1,1
   ]
 }
