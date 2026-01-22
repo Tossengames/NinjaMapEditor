@@ -1,50 +1,49 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Define colors for our tiles
 const colors = {
-    0: "#808080", // Floor (Gray)
-    1: "#000000", // Wall (Black)
-    2: "#33cc33", // Player (Green)
-    3: "#ff3300", // Enemy (Red)
-    4: "#ffcc00"  // Exit (Gold)
+    0: "#555555", // Floor (Darker Gray)
+    1: "#222222", // Wall (Almost Black)
+    2: "#44ff44", // Player (Neon Green)
+    3: "#ff4444", // Enemy (Bright Red)
+    4: "#ffff44"  // Exit (Yellow/Gold)
 };
 
 async function loadMap() {
     const mapFile = document.getElementById('mapSelector').value;
     
+    // Clear canvas while loading
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
     try {
         const response = await fetch(mapFile);
+        if (!response.ok) throw new Error("File not found");
+        
         const mapData = await response.json();
         drawMap(mapData);
     } catch (error) {
-        console.error("Error loading map:", error);
-        alert("Make sure the JSON file exists!");
+        console.error("Map Load Error:", error);
+        ctx.fillStyle = "white";
+        ctx.fillText("Error loading JSON: " + mapFile, 10, 20);
     }
 }
 
 function drawMap(map) {
-    // Set canvas size based on map data
     canvas.width = map.cols * map.tilesize;
     canvas.height = map.rows * map.tilesize;
 
-    // Loop through the grid array
-    for (let i = 0; i < map.grid.length; i++) {
-        const tileType = map.grid[i];
-        
-        // Calculate X and Y coordinates
-        const x = (i % map.cols) * map.tilesize;
-        const y = Math.floor(i / map.cols) * map.tilesize;
+    map.grid.forEach((tileType, index) => {
+        const x = (index % map.cols) * map.tilesize;
+        const y = Math.floor(index / map.cols) * map.tilesize;
 
-        // Draw the tile
+        // Draw Tile
         ctx.fillStyle = colors[tileType] || "#000";
         ctx.fillRect(x, y, map.tilesize, map.tilesize);
-        
-        // Optional: Draw a thin border around tiles
-        ctx.strokeStyle = "rgba(255,255,255,0.1)";
-        ctx.strokeRect(x, y, map.tilesize, map.tilesize);
-    }
-}
 
-// Load default map on startup
-window.onload = loadMap;
+        // Add subtle lighting effect to walls (Bevel)
+        if (tileType === 1) {
+            ctx.strokeStyle = "#444";
+            ctx.strokeRect(x, y, map.tilesize, map.tilesize);
+        }
+    });
+}
