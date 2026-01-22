@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Tile Loader</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #222; color: white; }
+        canvas { border: 2px solid #555; margin-top: 20px; image-rendering: pixelated; }
+        .menu { margin: 20px; padding: 10px; background: #333; border-radius: 8px; }
+    </style>
+</head>
+<body>
+
+    <div class="menu">
+        <select id="mapSelector">
+            <option value="level1.json">Level 1: Dungeon</option>
+            <option value="level2.json">Level 2: The Maze</option>
+        </select>
+        <button onclick="loadMap()">Load Map</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script src="game.js"></script>
+</body>
+</html>
