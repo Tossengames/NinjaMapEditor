@@ -1,6 +1,6 @@
 /**
- * EDITOR.JS - MISSION ARCHITECT
- * Handles categorized tile placement and mission metadata.
+ * EDITOR.JS - THE MISSION ARCHITECT
+ * Handles map creation, logic placement, and structural tools.
  */
 
 const edCanvas = document.getElementById('editorCanvas');
@@ -24,7 +24,7 @@ function openEditor() {
     currentDrawCall = renderEditor;
     isPencilMode = true;
     
-    // Fill grid with default floor if empty
+    // Initialize a default grid if empty
     if (editorMap.grid.length === 0) {
         resetEditorGrid();
     }
@@ -35,19 +35,60 @@ function openEditor() {
 }
 
 /**
- * 2. PALETTE & CATEGORIES
+ * 2. STRUCTURAL TOOLS (Resize, Fill, Border)
+ */
+function resizeMap() {
+    const newCols = parseInt(document.getElementById('ed-width').value) || 15;
+    const newRows = parseInt(document.getElementById('ed-height').value) || 15;
+    
+    const newGrid = new Array(newCols * newRows).fill(0);
+
+    // Copy existing tiles to the new grid relative to top-left
+    for (let r = 0; r < Math.min(newRows, editorMap.rows); r++) {
+        for (let c = 0; c < Math.min(newCols, editorMap.cols); c++) {
+            newGrid[r * newCols + c] = editorMap.grid[r * editorMap.cols + c];
+        }
+    }
+
+    editorMap.cols = newCols;
+    editorMap.rows = newRows;
+    editorMap.grid = newGrid;
+    renderEditor();
+}
+
+function fillMap() {
+    const tileName = TILE_DATA[selectedTile]?.label || "selected tile";
+    if (confirm(`Fill the entire map with ${tileName}?`)) {
+        editorMap.grid = editorMap.grid.fill(selectedTile);
+        renderEditor();
+    }
+}
+
+function autoWalls() {
+    const wallId = 20; // Brick Wall ID from Registry
+    for (let r = 0; r < editorMap.rows; r++) {
+        for (let c = 0; c < editorMap.cols; c++) {
+            // Check if tile is on the edge
+            if (r === 0 || r === editorMap.rows - 1 || c === 0 || c === editorMap.cols - 1) {
+                editorMap.grid[r * editorMap.cols + c] = wallId;
+            }
+        }
+    }
+    renderEditor();
+}
+
+/**
+ * 3. PALETTE & CATEGORIES
  */
 function initPalette() {
-    filterPalette(); // Default load
+    filterPalette();
 }
 
 function filterPalette() {
     const pal = document.getElementById('palette');
     const cat = document.getElementById('palette-cat-select').value;
-    
-    pal.innerHTML = ""; // Clear current view
-    
-    // Loop through the registry we defined in game.js
+    pal.innerHTML = ""; 
+
     Object.entries(TILE_REGISTRY).forEach(([key, d]) => {
         if (cat === "all" || d.cat === cat) {
             const item = document.createElement('div');
@@ -62,18 +103,14 @@ function filterPalette() {
 
 function selectPalette(id, label) {
     selectedTile = id;
-    
-    // Update UI highlights
     document.querySelectorAll('.pal-item').forEach(i => i.classList.remove('active'));
     const activeElem = document.getElementById(`pal-${id}`);
     if(activeElem) activeElem.classList.add('active');
-    
-    // Update name display
     document.getElementById('selected-tile-name').innerText = label;
 }
 
 /**
- * 3. PAINTING LOGIC
+ * 4. PAINTING ENGINE
  */
 function paint(e) {
     if (!isPencilMode) return;
@@ -81,11 +118,10 @@ function paint(e) {
     const rect = edCanvas.getBoundingClientRect();
     const p = e.touches ? e.touches[0] : e;
 
-    // Inverse Camera Math (Corrects for Zoom and Pan)
     const mx = (p.clientX - rect.left - edCanvas.width/2) / camera.zoom - camera.x;
     const my = (p.clientY - rect.top - edCanvas.height/2) / camera.zoom - camera.y;
 
-    const s = 64; // Tilesize
+    const s = 64; 
     const stX = -(editorMap.cols * s) / 2;
     const stY = -(editorMap.rows * s) / 2;
 
@@ -95,7 +131,7 @@ function paint(e) {
     if(col >= 0 && col < editorMap.cols && row >= 0 && row < editorMap.rows) {
         const index = row * editorMap.cols + col;
 
-        // LOGIC: Ensure only one Player Start exists on the map
+        // Unique Constraint: Only one Player Start (ID 100)
         if (selectedTile === 100) {
             editorMap.grid = editorMap.grid.map(id => id === 100 ? 0 : id);
         }
@@ -106,12 +142,10 @@ function paint(e) {
 }
 
 /**
- * 4. UI CONTROLS
+ * 5. UI & RENDERING
  */
 function toggleSidebar() {
-    const sidebar = document.getElementById('editor-sidebar');
-    sidebar.classList.toggle('collapsed');
-    // Re-render after CSS transition
+    document.getElementById('editor-sidebar').classList.toggle('collapsed');
     setTimeout(renderEditor, 310);
 }
 
@@ -131,51 +165,44 @@ function resetEditorGrid() {
     editorMap.grid = new Array(editorMap.cols * editorMap.rows).fill(0);
 }
 
-/**
- * 5. RENDERING
- */
 function renderEditor() {
     if (document.getElementById('editor-screen').classList.contains('hidden')) return;
-
-    const viewport = document.getElementById('editor-viewport');
+    const viewport = document.getElementById('viewport-container');
     edCanvas.width = viewport.clientWidth;
     edCanvas.height = viewport.clientHeight;
 
-    // Use shared renderer from game.js
+    // Use the core renderer from game.js
     renderGrid(edCtx, edCanvas, editorMap);
 }
 
 /**
- * 6. EXPORTING
+ * 6. DATA EXPORT
  */
 function exportMap() {
-    editorMap.name = document.getElementById('ed-name').value;
-    editorMap.story = document.getElementById('ed-story').value;
+    editorMap.name = document.getElementById('ed-name').value || "Unnamed Mission";
+    editorMap.story = document.getElementById('ed-story').value || "No briefing.";
     editorMap.condition = document.getElementById('ed-condition').value;
 
-    const package = {
+    const payload = {
         map: editorMap,
-        registry_snapshot: TILE_REGISTRY,
-        timestamp: new Date().getTime()
+        ver: "2.0",
+        timestamp: Date.now()
     };
 
-    document.getElementById('export-area').value = JSON.stringify(package, null, 2);
+    document.getElementById('export-area').value = JSON.stringify(payload, null, 2);
     document.getElementById('export-modal').classList.remove('hidden');
 }
 
 function copyToClipboard() {
     const area = document.getElementById('export-area');
     area.select();
-    navigator.clipboard.writeText(area.value).then(() => {
-        alert("JSON Data Copied! Save this to a file.");
-    });
+    navigator.clipboard.writeText(area.value).then(() => alert("Mission Data Copied!"));
 }
 
 function closeExport() {
     document.getElementById('export-modal').classList.add('hidden');
 }
 
-// Global Resize Listener
 window.addEventListener('resize', () => {
     if (currentDrawCall === renderEditor) renderEditor();
 });
