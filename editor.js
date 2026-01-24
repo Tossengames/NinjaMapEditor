@@ -1,6 +1,5 @@
 /**
- * EDITOR.JS - THE MISSION ARCHITECT
- * Handles map creation, logic placement, and structural tools.
+ * EDITOR.JS - THE ARCHITECT PRO
  */
 
 const edCanvas = document.getElementById('editorCanvas');
@@ -17,25 +16,26 @@ let editorMap = {
 };
 
 /**
- * 1. INITIALIZATION
+ * 1. INITIALIZATION & SCREEN ENTRY
  */
 function openEditor() {
     switchScreen('editor-screen');
     currentDrawCall = renderEditor;
     isPencilMode = true;
     
-    // Initialize a default grid if empty
+    // Default grid setup
     if (editorMap.grid.length === 0) {
         resetEditorGrid();
     }
     
     initPalette();
+    // Pass 'paint' as the action for the unified input system
     initInput(edCanvas, paint);
     renderEditor();
 }
 
 /**
- * 2. STRUCTURAL TOOLS (Resize, Fill, Border)
+ * 2. POWER TOOLS (RESIZE, FILL, BORDER)
  */
 function resizeMap() {
     const newCols = parseInt(document.getElementById('ed-width').value) || 15;
@@ -43,7 +43,7 @@ function resizeMap() {
     
     const newGrid = new Array(newCols * newRows).fill(0);
 
-    // Copy existing tiles to the new grid relative to top-left
+    // Copy old tiles into new grid (Top-Left Anchored)
     for (let r = 0; r < Math.min(newRows, editorMap.rows); r++) {
         for (let c = 0; c < Math.min(newCols, editorMap.cols); c++) {
             newGrid[r * newCols + c] = editorMap.grid[r * editorMap.cols + c];
@@ -65,10 +65,9 @@ function fillMap() {
 }
 
 function autoWalls() {
-    const wallId = 20; // Brick Wall ID from Registry
+    const wallId = 20; // wall_brick ID
     for (let r = 0; r < editorMap.rows; r++) {
         for (let c = 0; c < editorMap.cols; c++) {
-            // Check if tile is on the edge
             if (r === 0 || r === editorMap.rows - 1 || c === 0 || c === editorMap.cols - 1) {
                 editorMap.grid[r * editorMap.cols + c] = wallId;
             }
@@ -78,7 +77,7 @@ function autoWalls() {
 }
 
 /**
- * 3. PALETTE & CATEGORIES
+ * 3. PALETTE LOGIC
  */
 function initPalette() {
     filterPalette();
@@ -110,7 +109,7 @@ function selectPalette(id, label) {
 }
 
 /**
- * 4. PAINTING ENGINE
+ * 4. PAINTING & INPUT
  */
 function paint(e) {
     if (!isPencilMode) return;
@@ -118,6 +117,7 @@ function paint(e) {
     const rect = edCanvas.getBoundingClientRect();
     const p = e.touches ? e.touches[0] : e;
 
+    // Apply Inverse Camera Transform to find the world-space coordinate
     const mx = (p.clientX - rect.left - edCanvas.width/2) / camera.zoom - camera.x;
     const my = (p.clientY - rect.top - edCanvas.height/2) / camera.zoom - camera.y;
 
@@ -131,21 +131,22 @@ function paint(e) {
     if(col >= 0 && col < editorMap.cols && row >= 0 && row < editorMap.rows) {
         const index = row * editorMap.cols + col;
 
-        // Unique Constraint: Only one Player Start (ID 100)
+        // Constraint: Only one Player Spawn allowed
         if (selectedTile === 100) {
             editorMap.grid = editorMap.grid.map(id => id === 100 ? 0 : id);
         }
 
         editorMap.grid[index] = selectedTile;
-        renderEditor();
+        renderEditor(); // Immediate visual feedback
     }
 }
 
 /**
- * 5. UI & RENDERING
+ * 5. UI CONTROLS & RENDERING
  */
 function toggleSidebar() {
     document.getElementById('editor-sidebar').classList.toggle('collapsed');
+    // Brief delay to allow CSS transition to finish before resizing canvas
     setTimeout(renderEditor, 310);
 }
 
@@ -167,42 +168,54 @@ function resetEditorGrid() {
 
 function renderEditor() {
     if (document.getElementById('editor-screen').classList.contains('hidden')) return;
-    const viewport = document.getElementById('viewport-container');
-    edCanvas.width = viewport.clientWidth;
-    edCanvas.height = viewport.clientHeight;
+    
+    const vp = document.getElementById('viewport-container');
+    edCanvas.width = vp.clientWidth;
+    edCanvas.height = vp.clientHeight;
 
-    // Use the core renderer from game.js
+    // Call the unified renderer from game.js
     renderGrid(edCtx, edCanvas, editorMap);
 }
 
 /**
- * 6. DATA EXPORT
+ * 6. EXPORT / DATA HANDLING
  */
 function exportMap() {
+    // Collect metadata from inputs
     editorMap.name = document.getElementById('ed-name').value || "Unnamed Mission";
     editorMap.story = document.getElementById('ed-story').value || "No briefing.";
     editorMap.condition = document.getElementById('ed-condition').value;
 
-    const payload = {
+    const exportData = {
         map: editorMap,
-        ver: "2.0",
-        timestamp: Date.now()
+        version: "2.1",
+        exportedAt: new Date().toISOString()
     };
 
-    document.getElementById('export-area').value = JSON.stringify(payload, null, 2);
+    document.getElementById('export-area').value = JSON.stringify(exportData, null, 2);
     document.getElementById('export-modal').classList.remove('hidden');
 }
 
 function copyToClipboard() {
     const area = document.getElementById('export-area');
     area.select();
-    navigator.clipboard.writeText(area.value).then(() => alert("Mission Data Copied!"));
+    
+    // Modern copy API with fallback
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(area.value).then(() => {
+            alert("Mission data copied to clipboard!");
+        });
+    } else {
+        document.execCommand('copy');
+        alert("Mission data copied!");
+    }
 }
 
 function closeExport() {
     document.getElementById('export-modal').classList.add('hidden');
 }
 
+// Ensure the editor stays responsive to screen changes
 window.addEventListener('resize', () => {
     if (currentDrawCall === renderEditor) renderEditor();
 });
