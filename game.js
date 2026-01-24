@@ -27,26 +27,33 @@ let selectedItems = [];
 let camera = { x: 0, y: 0, zoom: 1, isDragging: false, lastMouse: { x: 0, y: 0 } };
 let touchDist = 0;
 
-// --- 1. MENU LOGIC ---
+// --- NAVIGATION ---
 function showMissionList() {
-    document.getElementById('level-list-container').classList.remove('hidden');
+    switchScreen('mission-screen');
     const list = document.getElementById('level-list');
-    list.innerHTML = levelFiles.map(f => `<div class="list-item" onclick="loadMission('${f}')">${f.toUpperCase()}</div>`).join('');
+    list.innerHTML = levelFiles.map(f => `
+        <div class="list-item" onclick="loadMission('${f}')">
+            <strong>${f.replace('.json', '').toUpperCase()}</strong><br>
+            <small style="opacity:0.6">Click to view details</small>
+        </div>
+    `).join('');
 }
 
 async function loadMission(file) {
-    const res = await fetch(file);
-    currentMapData = await res.json();
-    document.getElementById('info-name').innerText = currentMapData.name;
-    document.getElementById('info-story').innerText = currentMapData.story;
-    document.getElementById('info-rules').innerText = currentMapData.rules;
-    switchScreen('info-screen');
+    try {
+        const res = await fetch(file);
+        currentMapData = await res.json();
+        document.getElementById('info-name').innerText = currentMapData.name;
+        document.getElementById('info-story').innerText = currentMapData.story;
+        document.getElementById('info-rules').innerText = currentMapData.rules;
+        switchScreen('info-screen');
+    } catch(e) { alert("Error loading mission file."); }
 }
 
-// --- 2. ITEM SELECTION ---
+// --- ITEM & LOADOUT SYSTEM ---
 function showItemSelection() {
     switchScreen('item-screen');
-    selectedItems = [];
+    selectedItems = []; // Reset for new session
     const grid = document.getElementById('item-grid');
     grid.innerHTML = AVAILABLE_ITEMS.map(item => `
         <div class="item-card" id="card-${item.id}" onclick="toggleItem('${item.id}')">
@@ -70,13 +77,26 @@ function toggleItem(id) {
 }
 
 function updateItemUI() {
+    // Highlights in the grid
     AVAILABLE_ITEMS.forEach(item => {
-        document.getElementById(`card-${item.id}`).classList.toggle('active', selectedItems.includes(item));
+        const card = document.getElementById(`card-${item.id}`);
+        if(card) card.classList.toggle('active', selectedItems.includes(item));
     });
-    document.getElementById('selection-count').innerText = `${selectedItems.length}/3`;
+
+    // Drawing the Loadout Panel (Visual bar)
+    const display = document.getElementById('loadout-display');
+    display.innerHTML = "";
+    for (let i = 0; i < 3; i++) {
+        const slot = document.createElement('div');
+        const item = selectedItems[i];
+        slot.className = `slot ${item ? 'filled' : ''}`;
+        slot.innerHTML = item ? item.icon : "";
+        if(item) slot.onclick = () => toggleItem(item.id); // Remove on click
+        display.appendChild(slot);
+    }
 }
 
-// --- 3. CAMERA & MOBILE INPUT ---
+// --- INPUT & PINCH ZOOM ---
 function initInput() {
     const getPos = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
 
@@ -92,7 +112,10 @@ function initInput() {
     const move = (e) => {
         if (e.touches && e.touches.length === 2) {
             const curDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
-            camera.zoom = Math.min(Math.max(0.4, camera.zoom * (curDist / touchDist)), 3);
+            if (touchDist > 0) {
+                const zoomFactor = curDist / touchDist;
+                camera.zoom = Math.min(Math.max(0.3, camera.zoom * zoomFactor), 4);
+            }
             touchDist = curDist;
             draw();
         } else if (camera.isDragging) {
@@ -107,22 +130,23 @@ function initInput() {
     canvas.addEventListener('mousedown', start);
     canvas.addEventListener('touchstart', start, {passive: false});
     window.addEventListener('mousemove', move);
-    window.addEventListener('touchmove', (e) => { e.preventDefault(); move(e); }, {passive: false});
+    window.addEventListener('touchmove', (e) => { if(e.touches.length > 1) e.preventDefault(); move(e); }, {passive: false});
     window.addEventListener('mouseup', () => camera.isDragging = false);
-    window.addEventListener('touchend', () => camera.isDragging = false);
+    window.addEventListener('touchend', () => { camera.isDragging = false; touchDist = 0; });
     
     window.addEventListener('wheel', e => {
-        camera.zoom = Math.min(Math.max(0.4, camera.zoom * (e.deltaY > 0 ? 0.9 : 1.1)), 3);
+        camera.zoom = Math.min(Math.max(0.3, camera.zoom * (e.deltaY > 0 ? 0.9 : 1.1)), 4);
         draw();
     }, {passive: false});
 }
 
-// --- 4. GAME ENGINE ---
+// --- ENGINE ---
 function startGame() {
+    if(selectedItems.length === 0 && !confirm("No items equipped. Proceed anyway?")) return;
     switchScreen('game-screen');
     const container = document.getElementById('dynamic-items');
     container.innerHTML = selectedItems.map(item => `
-        <div class="tool-btn special" onclick="gameAction('${item.name}')">${item.icon}<br>x5</div>
+        <div class="tool-btn special" onclick="gameAction('${item.name}')">${item.icon}<br>USE</div>
     `).join('');
     
     camera.x = 0; camera.y = 0; camera.zoom = 1;
@@ -130,7 +154,7 @@ function startGame() {
 }
 
 function draw() {
-    if (!currentMapData) return;
+    if (!currentMapData || document.getElementById('game-screen').classList.contains('hidden')) return;
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
@@ -149,14 +173,15 @@ function draw() {
         const y = startY + Math.floor(i / map.cols) * size;
         ctx.fillStyle = TILE_DATA[id]?.color || '#000';
         ctx.fillRect(x, y, size, size);
-        ctx.strokeStyle = "rgba(0,0,0,0.1)";
+        ctx.strokeStyle = "rgba(255,255,255,0.05)";
         ctx.strokeRect(x, y, size, size);
     });
 
     ctx.restore();
 }
 
-function gameAction(act) { alert("Performing: " + act); }
+// --- UTILS ---
+function gameAction(act) { alert("Tool used: " + act); }
 function togglePause(p) { document.getElementById('pause-screen').classList.toggle('hidden', !p); }
 function switchScreen(id) {
     document.querySelectorAll('.screen, #game-screen').forEach(s => s.classList.add('hidden'));
