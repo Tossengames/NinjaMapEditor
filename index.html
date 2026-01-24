@@ -24,15 +24,13 @@
         button { 
             padding: 12px; font-weight: bold; cursor: pointer; background: var(--gold); 
             border: none; border-radius: 6px; margin: 5px 0; width: 100%; max-width: 250px;
-            transition: transform 0.1s;
         }
-        button:active { transform: scale(0.98); }
         .btn-secondary { background: #444; color: white; }
         
-        /* Preparation Screen */
+        /* Preparation / Loadout */
         #loadout-panel { background: #111; padding: 15px; width: 85%; max-width: 400px; border-radius: 12px; border: 1px solid #444; margin-bottom: 20px; }
         .slot-container { display: flex; justify-content: center; gap: 10px; }
-        .slot { width: 60px; height: 60px; background: #222; border: 2px dashed #555; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 28px; position: relative; cursor: pointer; }
+        .slot { width: 60px; height: 60px; background: #222; border: 2px dashed #555; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 28px; position: relative; }
         .qty-badge { position: absolute; bottom: -5px; right: -5px; background: var(--gold); color: black; border-radius: 50%; width: 22px; height: 22px; font-size: 12px; font-weight: bold; display: flex; align-items: center; justify-content: center; border: 2px solid #111; }
         .item-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 90%; max-width: 400px; }
         .item-card { background: var(--panel); padding: 10px; border-radius: 8px; border: 1px solid #444; font-size: 11px; cursor: pointer; text-align: center; }
@@ -42,18 +40,18 @@
         #editor-sidebar { 
             width: 280px; background: #111; border-right: 2px solid #444; 
             padding: 15px; text-align: left; overflow-y: auto; z-index: 101; 
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            transition: transform 0.3s ease; 
         }
         #editor-sidebar.collapsed { transform: translateX(-280px); position: absolute; }
         
         #side-toggle { position: absolute; top: 10px; left: 10px; z-index: 110; background: var(--gold); border: none; width: 40px; height: 40px; border-radius: 5px; cursor: pointer; font-size: 20px; }
 
         label { display: block; font-size: 10px; color: #888; margin-top: 12px; text-transform: uppercase; font-weight: bold; }
-        input, textarea, select { background: #222; border: 1px solid #444; color: white; padding: 8px; width: 100%; box-sizing: border-box; margin-top: 4px; border-radius: 4px; font-size: 13px; }
+        input, select { background: #222; border: 1px solid #444; color: white; padding: 8px; width: 100%; box-sizing: border-box; margin-top: 4px; border-radius: 4px; }
 
         .palette-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
         .pal-item { aspect-ratio: 1; border: 2px solid #444; cursor: pointer; border-radius: 4px; }
-        .pal-item.active { border-color: var(--gold); box-shadow: 0 0 10px var(--gold); transform: scale(1.05); }
+        .pal-item.active { border-color: var(--gold); transform: scale(1.05); box-shadow: 0 0 10px var(--gold); }
 
         /* Viewport & Game UI */
         #viewport-container { flex-grow: 1; background: #000; position: relative; overflow: hidden; }
@@ -64,17 +62,17 @@
             padding: 0 20px; box-sizing: border-box; z-index: 10; 
         }
 
-        /* Modal */
-        #export-modal { background: rgba(0,0,0,0.98); padding: 20px; z-index: 500; }
-        #export-area { width: 90%; max-width: 600px; height: 300px; background: #000; color: #0f0; font-family: 'Courier New', monospace; padding: 10px; font-size: 11px; margin-bottom: 20px; border: 1px solid #333; outline: none; }
+        /* Export Modal */
+        #export-modal { background: rgba(0,0,0,0.95); padding: 20px; z-index: 500; }
+        #export-area { width: 90%; max-width: 600px; height: 300px; background: #000; color: #0f0; font-family: monospace; padding: 10px; font-size: 11px; margin-bottom: 20px; border: 1px solid #333; }
     </style>
 </head>
 <body>
 
     <div id="menu-screen" class="screen">
         <h1>SHADOW CHRONICLES</h1>
-        <button onclick="showMissionList()">ENTER THE SHADOWS</button>
-        <button onclick="openEditor()" style="background: var(--green); color: white;">MAP ARCHITECT</button>
+        <button onclick="showMissionList()">MISSIONS</button>
+        <button onclick="openEditor()" style="background: var(--green); color: white;">LEVEL DESIGNER</button>
     </div>
 
     <div id="mission-screen" class="screen hidden">
@@ -89,7 +87,7 @@
             <div id="loadout-display" class="slot-container"></div>
         </div>
         <div id="item-grid" class="item-grid"></div>
-        <button onclick="startGame()" style="background: var(--green); color: white; margin-top: 20px;">DEPLOY MISSION</button>
+        <button onclick="startGame()" style="background: var(--green); color: white; margin-top: 20px;">START OPERATION</button>
         <button class="btn-secondary" onclick="showMenu()">ABORT</button>
     </div>
 
@@ -97,13 +95,13 @@
         <button id="side-toggle" onclick="toggleSidebar()">☰</button>
         
         <div id="editor-sidebar">
-            <h3 style="color:var(--gold); margin-top: 40px;">BUILDER TOOLS</h3>
+            <h3 style="color:var(--gold); margin-top: 40px;">ARCHITECT</h3>
             
-            <label>Map Size (Cols x Rows)</label>
+            <label>Map Size (W x H)</label>
             <div style="display:flex; gap:5px;">
                 <input type="number" id="ed-width" value="15">
                 <input type="number" id="ed-height" value="15">
-                <button onclick="resizeMap()" style="width:60px; padding:0; font-size:11px;">SET</button>
+                <button onclick="resizeMap()" style="width:60px; padding:0; font-size:10px;">SET</button>
             </div>
 
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:10px;">
@@ -115,7 +113,7 @@
             <select id="ed-condition">
                 <option value="reach_exit">Reach the Exit</option>
                 <option value="assassinate">Assassinate Target</option>
-                <option value="retrieve">Recover Data</option>
+                <option value="retrieve">Steal Scroll</option>
             </select>
 
             <label>Category</label>
@@ -127,7 +125,7 @@
                 <option value="collection">Objectives</option>
             </select>
 
-            <div style="background:#222; padding:8px; border-radius:4px; margin-top:15px; border: 1px solid #444;">
+            <div style="background:#222; padding:8px; border-radius:4px; margin-top:15px; border: 1px solid #444; text-align:center;">
                 <span id="selected-tile-name" style="font-size:11px; color:var(--gold); font-weight:bold;">Stone Floor</span>
             </div>
             <div id="palette" class="palette-grid"></div>
@@ -151,13 +149,13 @@
     <div id="game-screen" class="hidden" style="position:fixed; inset:0;">
         <canvas id="gameCanvas"></canvas>
         <div id="toolbar">
-            <div id="game-status" style="color:var(--gold); font-weight:bold; font-size:14px;">INFILTRATION...</div>
-            <button onclick="showMenu()" class="btn-secondary" style="width:120px; margin:0;">EXIT MISSION</button>
+            <div id="game-status" style="color:var(--gold); font-weight:bold;">STATUS: INFILTRATING</div>
+            <button onclick="showMenu()" class="btn-secondary" style="width:100px; margin:0;">ABORT</button>
         </div>
     </div>
 
     <div id="export-modal" class="screen hidden">
-        <h2 style="color:var(--gold)">MISSION EXPORT</h2>
+        <h2 style="color:var(--gold)">MAP DATA</h2>
         <textarea id="export-area" readonly></textarea>
         <div style="display:flex; gap:10px; width: 90%; max-width: 400px;">
             <button onclick="copyToClipboard()" style="background:var(--blue); color:white;">COPY CODE</button>
