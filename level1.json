@@ -1,21 +1,19 @@
 {
-  "name": "The X-Dungeon",
-  "story": "You have been trapped in the center of the cross. The only way out is through the golden gate, but the shadows are moving...",
-  "rules": "Avoid red blocks. Reach the gold block to win.",
-  "rows": 11,
-  "cols": 11,
-  "tilesize": 40,
+  "name": "The Silent Pagoda",
+  "story": "The scrolls of the Elder must be recovered before dawn. Guards patrol the outer rim.",
+  "missionType": "Steal Scroll",
+  "rules": "Don't be spotted. Collect 1 Scroll. Reach Exit.",
+  "rows": 10, "cols": 10, "tilesize": 64,
   "grid": [
-    1,1,1,1,1,1,1,1,1,1,1,
-    1,2,0,0,0,1,0,0,0,4,1,
-    1,0,1,0,0,1,0,0,1,0,1,
-    1,0,0,1,0,1,0,1,0,0,1,
-    1,0,0,0,1,0,1,0,0,0,1,
-    1,1,1,1,0,0,0,1,1,1,1,
-    1,0,0,0,1,0,1,0,0,0,1,
-    1,0,0,1,0,1,0,1,0,0,1,
-    1,0,1,0,0,1,3,0,1,0,1,
-    1,3,0,0,0,1,0,0,0,3,1,
-    1,1,1,1,1,1,1,1,1,1,1
+    20,20,20,20,20,20,20,20,20,20,
+    20,100,0,0,20,0,0,0,70,20,
+    20,0,50,0,20,0,50,0,0,20,
+    20,0,0,0,0,0,0,200,0,20,
+    20,20,20,0,20,20,20,20,0,20,
+    20,0,0,0,0,0,0,0,0,20,
+    20,0,50,0,200,0,0,50,0,20,
+    20,0,0,0,0,0,0,0,0,20,
+    20,99,0,30,30,30,0,0,0,20,
+    20,20,20,20,20,20,20,20,20,20
   ]
 }
