@@ -3,167 +3,97 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Shadow Chronicles | Pro Stealth Engine</title>
+    <title>Shadow Chronicles: Stealth Engine</title>
     <style>
-        :root { 
-            --gold: #ffcc00; --bg: #1a1a1a; --panel: #2a2a2a; 
-            --blue: #007bff; --green: #28a745; --red: #dc3545;
-        }
-
-        body { 
-            margin: 0; padding: 0; background: var(--bg); color: white; 
-            font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; touch-action: none; 
-        }
-
-        /* Screen Management */
-        .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg); z-index: 100; }
+        :root { --gold: #ffcc00; --bg: #1a1a1a; --panel: #2a2a2a; }
+        body { margin: 0; padding: 0; background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none; }
+        .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg); z-index: 100; text-align: center; padding: 20px; }
         .hidden { display: none !important; }
-
-        /* UI Elements */
-        h1 { color: var(--gold); letter-spacing: 5px; margin-bottom: 20px; text-shadow: 0 0 10px rgba(255,204,0,0.3); }
-        button { 
-            padding: 12px; font-weight: bold; cursor: pointer; background: var(--gold); 
-            border: none; border-radius: 6px; margin: 5px 0; width: 100%; max-width: 250px;
-        }
-        .btn-secondary { background: #444; color: white; }
         
-        /* Preparation / Loadout */
-        #loadout-panel { background: #111; padding: 15px; width: 85%; max-width: 400px; border-radius: 12px; border: 1px solid #444; margin-bottom: 20px; }
-        .slot-container { display: flex; justify-content: center; gap: 10px; }
-        .slot { width: 60px; height: 60px; background: #222; border: 2px dashed #555; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 28px; position: relative; }
-        .qty-badge { position: absolute; bottom: -5px; right: -5px; background: var(--gold); color: black; border-radius: 50%; width: 22px; height: 22px; font-size: 12px; font-weight: bold; display: flex; align-items: center; justify-content: center; border: 2px solid #111; }
-        .item-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 90%; max-width: 400px; }
-        .item-card { background: var(--panel); padding: 10px; border-radius: 8px; border: 1px solid #444; font-size: 11px; cursor: pointer; text-align: center; }
+        /* Lists & Grids */
+        .scroll-box { width: 100%; max-width: 400px; max-height: 250px; overflow-y: auto; background: #111; border: 1px solid #444; border-radius: 8px; margin: 20px 0; }
+        .list-item { padding: 15px; border-bottom: 1px solid #222; cursor: pointer; transition: 0.2s; background: var(--panel); margin: 5px; border-radius: 4px; }
+        .list-item:hover { background: var(--gold); color: black; }
 
-        /* Editor Layout */
-        #editor-screen { flex-direction: row; padding: 0; align-items: stretch; }
-        #editor-sidebar { 
-            width: 280px; background: #111; border-right: 2px solid #444; 
-            padding: 15px; text-align: left; overflow-y: auto; z-index: 101; 
-            transition: transform 0.3s ease; 
-        }
-        #editor-sidebar.collapsed { transform: translateX(-280px); position: absolute; }
+        .item-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 15px 0; }
+        .item-card { background: var(--panel); padding: 10px; border-radius: 8px; cursor: pointer; border: 1px solid #444; font-size: 0.75rem; }
+        .item-card.active { border-color: var(--gold); background: #3a3a1a; }
+
+        /* Loadout Panel */
+        #loadout-panel { background: #111; padding: 15px; width: 90%; max-width: 400px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #444; position: relative; }
+        .slot { width: 55px; height: 55px; background: #222; border: 1px dashed #555; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; position: relative; }
+        .slot.filled { border: 1px solid var(--gold); background: #333; }
+        .qty-badge { position: absolute; bottom: -8px; right: -8px; background: var(--gold); color: black; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; font-weight: bold; display: flex; align-items: center; justify-content: center; border: 2px solid #111; }
+
+        /* Game UI */
+        #gameCanvas { display: block; background: #000; }
+        #toolbar { position: fixed; bottom: 0; width: 100%; height: 85px; background: rgba(0,0,0,0.9); border-top: 2px solid #444; display: flex; align-items: center; justify-content: center; gap: 10px; z-index: 10; }
+        #char-circle { position: fixed; bottom: 100px; left: 20px; width: 65px; height: 65px; background: #333; border: 3px solid var(--gold); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 35px; z-index: 11; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         
-        #side-toggle { position: absolute; top: 10px; left: 10px; z-index: 110; background: var(--gold); border: none; width: 40px; height: 40px; border-radius: 5px; cursor: pointer; font-size: 20px; }
+        .tool-btn { width: 58px; height: 58px; background: #222; border: 1px solid #555; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; color: #ccc; cursor: pointer; position: relative; }
+        .tool-btn.special { border-color: #00ff00; color: #00ff00; }
+        .tool-btn:active { background: var(--gold); color: black; }
 
-        label { display: block; font-size: 10px; color: #888; margin-top: 12px; text-transform: uppercase; font-weight: bold; }
-        input, select { background: #222; border: 1px solid #444; color: white; padding: 8px; width: 100%; box-sizing: border-box; margin-top: 4px; border-radius: 4px; }
-
-        .palette-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
-        .pal-item { aspect-ratio: 1; border: 2px solid #444; cursor: pointer; border-radius: 4px; }
-        .pal-item.active { border-color: var(--gold); transform: scale(1.05); box-shadow: 0 0 10px var(--gold); }
-
-        /* Viewport & Game UI */
-        #viewport-container { flex-grow: 1; background: #000; position: relative; overflow: hidden; }
-        #toolbar { 
-            position: fixed; bottom: 0; width: 100%; height: 80px; 
-            background: rgba(0,0,0,0.9); border-top: 1px solid #444; 
-            display: flex; align-items: center; justify-content: space-between; 
-            padding: 0 20px; box-sizing: border-box; z-index: 10; 
-        }
-
-        /* Export Modal */
-        #export-modal { background: rgba(0,0,0,0.95); padding: 20px; z-index: 500; }
-        #export-area { width: 90%; max-width: 600px; height: 300px; background: #000; color: #0f0; font-family: monospace; padding: 10px; font-size: 11px; margin-bottom: 20px; border: 1px solid #333; }
+        button { padding: 12px 30px; font-weight: bold; cursor: pointer; background: var(--gold); border: none; border-radius: 5px; margin: 10px; font-size: 1rem; }
+        .btn-secondary { background: #555; color: white; }
     </style>
 </head>
 <body>
 
     <div id="menu-screen" class="screen">
-        <h1>SHADOW CHRONICLES</h1>
+        <h1 style="color: var(--gold); letter-spacing: 4px;">SHADOW CHRONICLES</h1>
         <button onclick="showMissionList()">MISSIONS</button>
-        <button onclick="openEditor()" style="background: var(--green); color: white;">LEVEL DESIGNER</button>
+        <button class="btn-secondary" onclick="alert('Avoid red tiles and reach the gold tile!')">TUTORIALS</button>
     </div>
 
     <div id="mission-screen" class="screen hidden">
-        <h2 style="color: var(--gold)">CONTRACTS</h2>
-        <div id="level-list" style="width: 320px; background: #111; border-radius: 8px; padding: 10px; margin-bottom: 20px;"></div>
+        <h2>SELECT MISSION</h2>
+        <div id="level-list" class="scroll-box"></div>
         <button class="btn-secondary" onclick="showMenu()">BACK</button>
     </div>
 
+    <div id="info-screen" class="screen hidden">
+        <h2 id="info-name" style="color: var(--gold);"></h2>
+        <p id="info-story" style="font-style: italic; color: #aaa; max-width: 500px;"></p>
+        <div style="background: #111; padding: 15px; border-left: 4px solid var(--gold); text-align: left; margin: 20px; width: 80%; max-width: 400px;">
+            <strong>Mission Objectives:</strong>
+            <p id="info-rules" style="margin: 5px 0 0 0; font-size: 0.9rem; color: #ddd;"></p>
+        </div>
+        <button onclick="showItemSelection()">PREPARE GEAR</button>
+        <button class="btn-secondary" onclick="switchScreen('mission-screen')">BACK</button>
+    </div>
+
     <div id="item-screen" class="screen hidden">
-        <h2 style="color: var(--gold)">PREPARE GEAR</h2>
+        <h2>PREPARATION</h2>
         <div id="loadout-panel">
-            <div id="loadout-display" class="slot-container"></div>
+            <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--gold); margin-bottom:10px;">
+                <span>Current Loadout</span>
+                <span id="total-qty-label">Total: 0 / 5</span>
+            </div>
+            <div id="loadout-display" style="display: flex; justify-content: center; gap: 15px;"></div>
         </div>
         <div id="item-grid" class="item-grid"></div>
-        <button onclick="startGame()" style="background: var(--green); color: white; margin-top: 20px;">START OPERATION</button>
-        <button class="btn-secondary" onclick="showMenu()">ABORT</button>
+        <button id="start-btn" onclick="startGame()">DEPLOY MISSION</button>
+        <button class="btn-secondary" onclick="switchScreen('info-screen')">BACK</button>
     </div>
 
-    <div id="editor-screen" class="screen hidden">
-        <button id="side-toggle" onclick="toggleSidebar()">☰</button>
-        
-        <div id="editor-sidebar">
-            <h3 style="color:var(--gold); margin-top: 40px;">ARCHITECT</h3>
-            
-            <label>Map Size (W x H)</label>
-            <div style="display:flex; gap:5px;">
-                <input type="number" id="ed-width" value="15">
-                <input type="number" id="ed-height" value="15">
-                <button onclick="resizeMap()" style="width:60px; padding:0; font-size:10px;">SET</button>
-            </div>
-
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:10px;">
-                <button onclick="fillMap()" class="btn-secondary" style="font-size:10px;">FILL ALL</button>
-                <button onclick="autoWalls()" class="btn-secondary" style="font-size:10px;">BORDER</button>
-            </div>
-
-            <label>Mission Condition</label>
-            <select id="ed-condition">
-                <option value="reach_exit">Reach the Exit</option>
-                <option value="assassinate">Assassinate Target</option>
-                <option value="retrieve">Steal Scroll</option>
-            </select>
-
-            <label>Category</label>
-            <select id="palette-cat-select" onchange="filterPalette()">
-                <option value="all">All Tiles</option>
-                <option value="walkable">Floors</option>
-                <option value="not_walkable">Walls / Obstacles</option>
-                <option value="units">Spawns / Enemies</option>
-                <option value="collection">Objectives</option>
-            </select>
-
-            <div style="background:#222; padding:8px; border-radius:4px; margin-top:15px; border: 1px solid #444; text-align:center;">
-                <span id="selected-tile-name" style="font-size:11px; color:var(--gold); font-weight:bold;">Stone Floor</span>
-            </div>
-            <div id="palette" class="palette-grid"></div>
-
-            <label>Mission Intel</label>
-            <input type="text" id="ed-name" placeholder="Operation Name">
-            
-            <button onclick="exportMap()" style="background: var(--green); color: white; margin-top: 20px;">EXPORT JSON</button>
-            <button onclick="showMenu()" class="btn-secondary">QUIT EDITOR</button>
-        </div>
-
-        <div id="viewport-container">
-            <canvas id="editorCanvas"></canvas>
-            <div style="position:absolute; bottom:20px; right:20px; display:flex; gap:10px;">
-                <button onclick="togglePencil()" id="pencil-btn" style="width:120px; background:var(--blue); color:white; margin:0;">✏️ PAINTING</button>
-                <button onclick="toggleGrid()" style="width:80px; background:#444; color:white; margin:0;">GRID</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="game-screen" class="hidden" style="position:fixed; inset:0;">
+    <div id="game-screen" class="hidden">
+        <button style="position:fixed; top:10px; right:10px; z-index:20; padding:8px;" onclick="togglePause(true)">PAUSE</button>
         <canvas id="gameCanvas"></canvas>
+        <div id="char-circle">👤</div>
         <div id="toolbar">
-            <div id="game-status" style="color:var(--gold); font-weight:bold;">STATUS: INFILTRATING</div>
-            <button onclick="showMenu()" class="btn-secondary" style="width:100px; margin:0;">ABORT</button>
+            <div class="tool-btn" onclick="gameAction('attack')">⚔️<br>ATTACK</div>
+            <div class="tool-btn" onclick="gameAction('wait')">⏳<br>WAIT</div>
+            <div id="dynamic-items" style="display:flex; gap:10px;"></div>
         </div>
     </div>
 
-    <div id="export-modal" class="screen hidden">
-        <h2 style="color:var(--gold)">MAP DATA</h2>
-        <textarea id="export-area" readonly></textarea>
-        <div style="display:flex; gap:10px; width: 90%; max-width: 400px;">
-            <button onclick="copyToClipboard()" style="background:var(--blue); color:white;">COPY CODE</button>
-            <button onclick="closeExport()" class="btn-secondary">CLOSE</button>
-        </div>
+    <div id="pause-screen" class="screen hidden">
+        <h2>PAUSED</h2>
+        <button onclick="togglePause(false)">RESUME</button>
+        <button class="btn-secondary" onclick="showMenu()">QUIT</button>
     </div>
 
     <script src="game.js"></script>
-    <script src="editor.js"></script>
 </body>
 </html>
