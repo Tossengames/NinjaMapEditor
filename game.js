@@ -1,4 +1,3 @@
-// Keep only the essential parts from original game.js
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
@@ -34,7 +33,7 @@ const TILE_DATA = {
 let currentMapData = null;
 let inventory = [];
 
-// Navigation functions (keep these from original)
+// Navigation functions
 function switchScreen(id) {
     document.querySelectorAll('.screen, #game-screen').forEach(s => s.classList.add('hidden'));
     document.getElementById(id).classList.remove('hidden');
@@ -68,7 +67,7 @@ async function loadMission(file) {
     }
 }
 
-// Inventory functions (keep these from original)
+// Inventory functions
 function showItemSelection() {
     switchScreen('item-screen');
     inventory = [];
@@ -128,6 +127,16 @@ function updateInvUI() {
         const card = document.getElementById(`card-${it.id}`);
         if(card) card.classList.toggle('active', inventory.some(inv => inv.id === it.id));
     });
+}
+
+// Start game
+function startGame() {
+    if (!currentMapData) return;
+    
+    Game.init();
+    Game.start();
+    switchScreen('game-screen');
+    draw();
 }
 
 // Pause function
