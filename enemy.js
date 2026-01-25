@@ -3,26 +3,35 @@ class Enemy {
         this.id = id;
         this.x = x;
         this.y = y;
+        this.targetX = x;
+        this.targetY = y;
         this.type = type;
         this.health = type === 'boss' ? 100 : 50;
         this.maxHealth = type === 'boss' ? 100 : 50;
         this.attackDamage = type === 'boss' ? 20 : 10;
         this.visionRange = type === 'boss' ? 5 : 4;
         this.alertRange = 2;
-        this.state = 'patrol'; // patrol, investigating, chasing, attacking, alerted
+        this.state = 'patrol';
         this.alerted = false;
         this.alertTimer = 0;
         this.patrolPath = [];
         this.currentPatrolIndex = 0;
-        this.direction = 0; // 0: right, 1: down, 2: left, 3: up
+        this.direction = 0;
         this.lastKnownPlayerPos = null;
         this.feedback = '';
+        this.moving = false;
+        this.movePath = [];
+        this.moveStep = 0;
+        this.sleeping = false;
+        this.sleepTimer = 0;
+        this.poisoned = false;
+        this.poisonTimer = 0;
         
         this.initPatrol();
     }
     
     initPatrol() {
-        // Create a simple patrol path around current position
+        // Create patrol path around starting position
         this.patrolPath = [
             [this.x, this.y],
             [this.x + 1, this.y],
@@ -42,7 +51,7 @@ class Enemy {
     }
     
     canSeePlayer() {
-        if (Player.hidden) return false;
+        if (Player.hidden || this.sleeping) return false;
         
         const dx = Player.x - this.x;
         const dy = Player.y - this.y;
@@ -64,7 +73,7 @@ class Enemy {
             // Check if wall
             const tileIndex = y * currentMapData.cols + x;
             const tileId = currentMapData.grid[tileIndex];
-            if (!TILE_DATA[tileId]?.walkable) {
+            if (tileId === 20) { // Wall
                 return false;
             }
         }
@@ -73,6 +82,27 @@ class Enemy {
     }
     
     takeTurn() {
+        if (this.sleeping) {
+            this.sleepTimer--;
+            if (this.sleepTimer <= 0) {
+                this.sleeping = false;
+                this.feedback = "Waking up...";
+            } else {
+                this.feedback = "Sleeping...";
+                return 'sleeping';
+            }
+        }
+        
+        if (this.poisoned) {
+            this.poisonTimer--;
+            if (this.poisonTimer <= 0) {
+                this.takeDamage(999, false);
+                return 'dead';
+            }
+        }
+        
+        if (this.moving) return 'moving';
+        
         this.feedback = '';
         
         switch(this.state) {
@@ -108,6 +138,7 @@ class Enemy {
             this.alerted = true;
             this.lastKnownPlayerPos = { x: Player.x, y: Player.y };
             this.feedback = "I see you!";
+            Sound.play('alert');
             return;
         }
         
@@ -121,7 +152,7 @@ class Enemy {
         }
         
         // Move along patrol path
-        if (this.patrolPath.length > 1) {
+        if (this.patrolPath.length > 1 && !this.moving) {
             const target = this.patrolPath[this.currentPatrolIndex];
             if (this.x === target[0] && this.y === target[1]) {
                 this.currentPatrolIndex = (this.currentPatrolIndex + 1) % this.patrolPath.length;
@@ -152,8 +183,10 @@ class Enemy {
         }
         
         // Move toward investigation point
-        this.moveToward(this.lastKnownPlayerPos.x, this.lastKnownPlayerPos.y);
-        this.feedback = "Checking it out...";
+        if (!this.moving) {
+            this.moveToward(this.lastKnownPlayerPos.x, this.lastKnownPlayerPos.y);
+            this.feedback = "Checking it out...";
+        }
     }
     
     chasingBehavior() {
@@ -169,8 +202,10 @@ class Enemy {
             }
             
             // Move toward player
-            this.moveToward(Player.x, Player.y);
-            this.feedback = "Get back here!";
+            if (!this.moving) {
+                this.moveToward(Player.x, Player.y);
+                this.feedback = "Get back here!";
+            }
         } else {
             // Lost sight of player
             this.state = 'investigating';
@@ -189,7 +224,9 @@ class Enemy {
             this.feedback = "Take this!";
         } else {
             // Move toward player
-            this.moveToward(Player.x, Player.y);
+            if (!this.moving) {
+                this.moveToward(Player.x, Player.y);
+            }
         }
     }
     
@@ -213,15 +250,51 @@ class Enemy {
         
         if (path && path.length > 1) {
             const nextStep = path[1];
-            this.x = nextStep.x;
-            this.y = nextStep.y;
+            this.movePath = [{x: this.x, y: this.y}];
+            for (let i = 1; i < path.length && i <= 2; i++) {
+                this.movePath.push({x: path[i].x, y: path[i].y});
+            }
+            this.moving = true;
+            this.moveStep = 1;
+            this.performMoveStep();
+        }
+    }
+    
+    performMoveStep() {
+        if (this.moveStep >= this.movePath.length) {
+            // Movement complete
+            const finalPos = this.movePath[this.movePath.length - 1];
+            this.x = finalPos.x;
+            this.y = finalPos.y;
+            this.moving = false;
+            this.movePath = [];
+            this.moveStep = 0;
             
             // Update direction based on movement
-            if (nextStep.x > this.x) this.direction = 0;
-            else if (nextStep.y > this.y) this.direction = 1;
-            else if (nextStep.x < this.x) this.direction = 2;
-            else if (nextStep.y < this.y) this.direction = 3;
+            if (finalPos.x > this.targetX) this.direction = 0;
+            else if (finalPos.y > this.targetY) this.direction = 1;
+            else if (finalPos.x < this.targetX) this.direction = 2;
+            else if (finalPos.y < this.targetY) this.direction = 3;
+            
+            this.targetX = this.x;
+            this.targetY = this.y;
+            
+            draw();
+            return;
         }
+        
+        const nextPos = this.movePath[this.moveStep];
+        this.x = nextPos.x;
+        this.y = nextPos.y;
+        this.moveStep++;
+        
+        // Smooth camera follow during movement
+        Camera.smoothFocusOn(this.x, this.y);
+        
+        // Continue to next step with delay
+        setTimeout(() => this.performMoveStep(), 200);
+        
+        draw();
     }
     
     findPath(targetX, targetY) {
@@ -252,7 +325,7 @@ class Enemy {
                 if (visited.has(key)) continue;
                 if (newX < 0 || newX >= currentMapData.cols || newY < 0 || newY >= currentMapData.rows) continue;
                 
-                // Check if tile is walkable and not occupied
+                // Check if tile is walkable
                 const tileIndex = newY * currentMapData.cols + newX;
                 const tileId = currentMapData.grid[tileIndex];
                 if (!TILE_DATA[tileId]?.walkable) continue;
@@ -273,10 +346,13 @@ class Enemy {
         return null;
     }
     
-    takeDamage(damage) {
+    takeDamage(damage, fromPlayer = false) {
         this.health -= damage;
-        this.alerted = true;
-        this.state = 'chasing';
+        
+        if (fromPlayer) {
+            this.alerted = true;
+            this.state = 'chasing';
+        }
         
         if (this.health <= 0) {
             return true; // Enemy died
@@ -291,19 +367,25 @@ class Enemy {
         
         // Draw enemy body with state-based color
         let color;
-        switch(this.state) {
-            case 'chasing':
-            case 'attacking':
-                color = '#ff0000';
-                break;
-            case 'alerted':
-                color = '#9900ff';
-                break;
-            case 'investigating':
-                color = '#ff9900';
-                break;
-            default:
-                color = this.type === 'boss' ? '#ff8844' : '#ff4444';
+        if (this.sleeping) {
+            color = '#5555ff';
+        } else if (this.poisoned) {
+            color = '#aa00aa';
+        } else {
+            switch(this.state) {
+                case 'chasing':
+                case 'attacking':
+                    color = '#ff0000';
+                    break;
+                case 'alerted':
+                    color = '#9900ff';
+                    break;
+                case 'investigating':
+                    color = '#ff9900';
+                    break;
+                default:
+                    color = this.type === 'boss' ? '#ff8844' : '#ff4444';
+            }
         }
         
         ctx.fillStyle = color;
@@ -311,8 +393,10 @@ class Enemy {
         ctx.arc(x + size/2, y + size/2, size/3, 0, Math.PI * 2);
         ctx.fill();
         
-        // Draw vision cone
-        this.drawVisionCone(ctx, x, y, size);
+        // Draw vision cone if not sleeping
+        if (!this.sleeping) {
+            this.drawVisionCone(ctx, x, y, size);
+        }
         
         // Draw health bar
         ctx.fillStyle = '#ff0000';
@@ -324,11 +408,12 @@ class Enemy {
         ctx.fillStyle = 'white';
         ctx.font = '8px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(this.type.toUpperCase(), x + size/2, y - 12);
+        const label = this.sleeping ? 'Zzz' : this.type.toUpperCase();
+        ctx.fillText(label, x + size/2, y - 12);
     }
     
     drawVisionCone(ctx, x, y, size) {
-        if (Game.currentTurn !== 'enemy') return;
+        if (Game.currentTurn !== 'enemy' || this.sleeping) return;
         
         ctx.save();
         ctx.translate(x + size/2, y + size/2);
@@ -387,37 +472,35 @@ class EnemyManager {
         });
     }
     
-    static takeTurns() {
-        return new Promise(resolve => {
-            let currentIndex = 0;
+    static async takeTurns() {
+        for (const enemy of this.enemies) {
+            // Focus camera on enemy
+            Camera.smoothFocusOn(enemy.x, enemy.y);
+            await new Promise(resolve => setTimeout(resolve, 300));
             
-            const processNextEnemy = () => {
-                if (currentIndex >= this.enemies.length) {
-                    resolve();
-                    return;
-                }
-                
-                const enemy = this.enemies[currentIndex];
-                const delay = 500 + Math.random() * 1000;
-                
-                setTimeout(() => {
-                    Camera.focusOn(enemy.x, enemy.y);
-                    const previousState = enemy.state;
-                    enemy.takeTurn();
-                    
-                    currentIndex++;
-                    
-                    // Small delay between enemies
-                    setTimeout(() => {
-                        processNextEnemy();
-                    }, 300);
-                    
-                    draw();
-                }, delay);
-            };
+            // Enemy takes action
+            const previousState = enemy.state;
+            const action = enemy.takeTurn();
             
-            processNextEnemy();
-        });
+            // Wait for movement to complete
+            if (enemy.moving) {
+                await new Promise(resolve => {
+                    const checkMoving = () => {
+                        if (!enemy.moving) {
+                            resolve();
+                        } else {
+                            setTimeout(checkMoving, 100);
+                        }
+                    };
+                    checkMoving();
+                });
+            }
+            
+            // Small delay between enemies
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            draw();
+        }
     }
     
     static drawAll(ctx, startX, startY, size) {
