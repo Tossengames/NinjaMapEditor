@@ -35,6 +35,7 @@
         .tool-btn { width: 58px; height: 58px; background: #222; border: 1px solid #555; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; color: #ccc; cursor: pointer; position: relative; }
         .tool-btn.special { border-color: #00ff00; color: #00ff00; }
         .tool-btn:active { background: var(--gold); color: black; }
+        .tool-btn.disabled { opacity: 0.5; cursor: not-allowed; }
 
         button { padding: 12px 30px; font-weight: bold; cursor: pointer; background: var(--gold); border: none; border-radius: 5px; margin: 10px; font-size: 1rem; }
         .btn-secondary { background: #555; color: white; }
@@ -114,15 +115,15 @@
             <div class="hud-row"><strong style="color: #ff3300;">Status:</strong> <span id="hud-status" class="status good">HIDDEN</span></div>
             <div class="hud-row"><strong style="color: #ff3300;">Objectives:</strong> <span id="hud-objectives">0/0</span></div>
             <div class="hud-row"><strong style="color: #ff3300;">Turn:</strong> <span id="hud-turn">Player</span></div>
+            <div class="hud-row"><strong style="color: #ff3300;">AP:</strong> <span id="hud-ap">3/3</span></div>
         </div>
         <button style="position:fixed; top:10px; right:10px; z-index:20; padding:8px; background: #990000;" onclick="togglePause(true)">PAUSE</button>
         <canvas id="gameCanvas"></canvas>
         <div id="char-circle">👤</div>
         <div id="toolbar">
-            <div class="tool-btn" onclick="Player.startMove()">👣<br>MOVE</div>
-            <div class="tool-btn" onclick="Player.toggleHide()">🫥<br>HIDE</div>
-            <div class="tool-btn" onclick="Player.attack()">⚔️<br>ATTACK</div>
-            <div class="tool-btn" onclick="Game.endTurn()">⏳<br>WAIT</div>
+            <div class="tool-btn" id="move-btn" onclick="Player.startMove()">👣<br>MOVE</div>
+            <div class="tool-btn" id="attack-btn" onclick="Player.attack()">⚔️<br>ATTACK</div>
+            <div class="tool-btn" id="end-btn" onclick="Game.endTurn()">⏹️<br>END</div>
             <div id="dynamic-items" style="display:flex; gap:10px;"></div>
         </div>
     </div>
