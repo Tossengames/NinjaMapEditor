@@ -11,8 +11,10 @@ class Player {
     static stealthKills = 0;
     static combatKills = 0;
     static itemsUsed = 0;
-    static currentAction = null; // 'move', 'attack', 'item'
-    static itemToUse = null; // Item being used
+    static currentAction = null;
+    static moving = false;
+    static movePath = [];
+    static moveStep = 0;
     
     static init() {
         if (currentMapData && currentMapData.player) {
@@ -20,16 +22,15 @@ class Player {
             this.y = currentMapData.player.y;
         }
         this.currentAction = null;
-        this.itemToUse = null;
+        this.moving = false;
+        this.movePath = [];
         this.updateCircle();
-        this.updateToolbarButtons();
     }
     
     static startTurn() {
         this.resetTurn();
         this.currentAction = 'move';
         this.startMove(); // Auto-start move mode
-        this.updateToolbarButtons();
     }
     
     static updateCircle() {
@@ -61,13 +62,6 @@ class Player {
             circle.style.borderColor = "#ffffff";
             circle.style.boxShadow = "0 0 20px white";
         }
-        
-        // Update HUD AP display
-        const hudAP = document.getElementById('hud-ap');
-        if (hudAP) {
-            hudAP.textContent = `${this.actionPoints}/${this.maxActionPoints}`;
-            hudAP.style.color = this.actionPoints > 0 ? '#00ff00' : '#ff0000';
-        }
     }
     
     static updateToolbarButtons() {
@@ -75,7 +69,7 @@ class Player {
         const attackBtn = document.getElementById('attack-btn');
         const endBtn = document.getElementById('end-btn');
         
-        if (Game.currentTurn !== 'player') {
+        if (Game.currentTurn !== 'player' || this.moving) {
             if (moveBtn) moveBtn.classList.add('disabled');
             if (attackBtn) attackBtn.classList.add('disabled');
             if (endBtn) endBtn.classList.add('disabled');
@@ -86,7 +80,6 @@ class Player {
         if (moveBtn) {
             if (this.actionPoints > 0) {
                 moveBtn.classList.remove('disabled');
-                moveBtn.onclick = () => this.startMove();
             } else {
                 moveBtn.classList.add('disabled');
             }
@@ -97,7 +90,6 @@ class Player {
             const enemiesInRange = EnemyManager.getEnemiesInRange(this.x, this.y, 1);
             if (this.actionPoints > 0 && enemiesInRange.length > 0) {
                 attackBtn.classList.remove('disabled');
-                attackBtn.onclick = () => this.attack();
             } else {
                 attackBtn.classList.add('disabled');
             }
@@ -106,23 +98,22 @@ class Player {
         // END button
         if (endBtn) {
             endBtn.classList.remove('disabled');
-            endBtn.onclick = () => Game.endTurn();
         }
     }
     
     static startMove() {
-        if (Game.currentTurn !== 'player' || this.actionPoints <= 0) return;
+        if (Game.currentTurn !== 'player' || this.actionPoints <= 0 || this.moving) return;
         
         this.currentAction = 'move';
         this.itemToUse = null;
-        canvas.onclick = null; // Clear previous click handlers
+        canvas.onclick = null;
         Game.clearHighlights();
         
         // Calculate movable tiles
         const movable = this.getMovableTiles();
         
         if (movable.length === 0) {
-            Game.showFeedback("No moves available!");
+            showFeedback("No moves available!");
             return;
         }
         
@@ -148,7 +139,7 @@ class Player {
             }
         };
         
-        Game.showFeedback("Select a tile to move (Green highlights)");
+        showFeedback("Select a tile to move (Green highlights)");
     }
     
     static getMovableTiles() {
@@ -185,33 +176,71 @@ class Player {
         return tiles;
     }
     
-    static moveTo(x, y) {
-        const dist = Math.abs(x - this.x) + Math.abs(y - this.y);
-        if (dist > this.actionPoints) {
-            Game.showFeedback("Not enough action points!");
+    static moveTo(targetX, targetY) {
+        const dist = Math.abs(targetX - this.x) + Math.abs(targetY - this.y);
+        if (dist > this.actionPoints || this.moving) {
+            showFeedback("Cannot move there!");
             return;
         }
         
-        this.x = x;
-        this.y = y;
-        this.actionPoints -= dist;
+        // Create path for smooth movement
+        this.movePath = [];
+        let currentX = this.x;
+        let currentY = this.y;
         
-        // Check tile effects (auto-hide)
-        this.checkCurrentTile();
-        
-        // Smooth camera focus
-        Camera.smoothFocusOn(x, y);
-        
-        Game.showFeedback(`Moved to (${x}, ${y}) - ${this.actionPoints} AP remaining`);
-        
-        this.updateCircle();
-        this.updateToolbarButtons();
-        draw();
-        
-        // If no action points left, auto-end turn after delay
-        if (this.actionPoints <= 0) {
-            setTimeout(() => Game.endTurn(), 1000);
+        while (currentX !== targetX || currentY !== targetY) {
+            if (currentX < targetX) {
+                currentX++;
+            } else if (currentX > targetX) {
+                currentX--;
+            } else if (currentY < targetY) {
+                currentY++;
+            } else if (currentY > targetY) {
+                currentY--;
+            }
+            this.movePath.push({ x: currentX, y: currentY });
         }
+        
+        this.moving = true;
+        this.moveStep = 0;
+        this.performMoveStep();
+    }
+    
+    static performMoveStep() {
+        if (this.moveStep >= this.movePath.length) {
+            // Movement complete
+            this.moving = false;
+            this.actionPoints -= this.movePath.length;
+            
+            // Check tile effects (auto-hide)
+            this.checkCurrentTile();
+            
+            showFeedback(`Moved - ${this.actionPoints} AP remaining`);
+            
+            this.updateCircle();
+            this.updateToolbarButtons();
+            
+            // If no action points left, auto-end turn after delay
+            if (this.actionPoints <= 0) {
+                setTimeout(() => Game.endTurn(), 1000);
+            }
+            
+            draw();
+            return;
+        }
+        
+        const nextPos = this.movePath[this.moveStep];
+        this.x = nextPos.x;
+        this.y = nextPos.y;
+        this.moveStep++;
+        
+        // Smooth camera follow during movement
+        Camera.smoothFocusOn(this.x, this.y);
+        
+        // Continue to next step with delay
+        setTimeout(() => this.performMoveStep(), 200);
+        
+        draw();
     }
     
     static checkCurrentTile() {
@@ -224,13 +253,13 @@ class Player {
             this.inHiding = true;
             if (!this.hidden) {
                 this.hidden = true;
-                Game.showFeedback("You're hiding in the shadows!");
+                showFeedback("You're hiding in the shadows!");
             }
         } else {
             this.inHiding = false;
             if (this.hidden) {
                 this.hidden = false;
-                Game.showFeedback("You left hiding spot.");
+                showFeedback("You left hiding spot.");
             }
         }
         
@@ -238,11 +267,10 @@ class Player {
         Items.checkTileForItems(this.x, this.y);
         
         this.updateCircle();
-        Game.updateHUD();
     }
     
     static attack() {
-        if (Game.currentTurn !== 'player' || this.actionPoints <= 0) return;
+        if (Game.currentTurn !== 'player' || this.actionPoints <= 0 || this.moving) return;
         
         this.currentAction = 'attack';
         this.itemToUse = null;
@@ -252,7 +280,7 @@ class Player {
         const enemiesInRange = EnemyManager.getEnemiesInRange(this.x, this.y, 1);
         
         if (enemiesInRange.length === 0) {
-            Game.showFeedback("No enemies in attack range!");
+            showFeedback("No enemies in attack range!");
             this.currentAction = null;
             return;
         }
@@ -281,7 +309,7 @@ class Player {
             }
         };
         
-        Game.showFeedback("Select an enemy to attack (Red highlights)");
+        showFeedback("Select an enemy to attack (Red highlights)");
     }
     
     static performAttack(enemy) {
@@ -290,14 +318,10 @@ class Player {
         
         if (isStealthKill) {
             // Stealth kill - instant kill, no AP cost
-            Effects.createBlood(enemy.x, enemy.y);
-            Sound.play('stealth_kill');
+            Effects.createStealthEffect(enemy.x, enemy.y);
             EnemyManager.removeEnemy(enemy.id);
             this.stealthKills++;
-            Game.showFeedback(`Stealth kill! ${enemy.type} eliminated silently.`);
-            
-            // Show kill feedback
-            Effects.showDamageText(enemy.x, enemy.y, "STEALTH KILL", "#ffffff");
+            showFeedback(`Stealth kill! ${enemy.type} eliminated silently.`);
             
             // End turn after stealth kill
             setTimeout(() => Game.endTurn(), 800);
@@ -307,20 +331,17 @@ class Player {
             
             this.actionPoints--;
             const damage = 25;
-            const died = enemy.takeDamage(damage);
-            
-            Effects.showDamageText(enemy.x, enemy.y, `-${damage}`, "#ff0000");
-            Sound.play('attack');
+            const died = enemy.takeDamage(damage, true);
             
             if (died) {
                 Effects.createBlood(enemy.x, enemy.y);
                 EnemyManager.removeEnemy(enemy.id);
                 this.combatKills++;
-                Game.showFeedback(`Defeated ${enemy.type}!`);
+                showFeedback(`Defeated ${enemy.type}!`);
             } else {
                 enemy.alerted = true;
                 enemy.state = 'chasing';
-                Game.showFeedback(`Attacked ${enemy.type} for ${damage} damage!`);
+                showFeedback(`Attacked ${enemy.type} for ${damage} damage!`);
             }
             
             // Check if should end turn
@@ -334,35 +355,18 @@ class Player {
         draw();
     }
     
-    static startItemUse(itemId) {
-        if (Game.currentTurn !== 'player' || this.actionPoints <= 0) return;
-        
-        this.currentAction = 'item';
-        this.itemToUse = itemId;
-        canvas.onclick = null;
-        Game.clearHighlights();
-        
-        Items.prepareItemUse(itemId);
-    }
-    
     static takeDamage(damage) {
         this.health -= damage;
-        Game.showFeedback(`Took ${damage} damage! Health: ${this.health}`);
+        showFeedback(`Took ${damage} damage! Health: ${this.health}`);
         
         if (this.health <= 0) {
             Game.gameOver("You have been defeated!");
         }
         
         this.updateCircle();
-        Game.updateHUD();
-        draw();
     }
     
     static resetTurn() {
         this.actionPoints = this.maxActionPoints;
         this.currentAction = null;
-        this.itemToUse = null;
-        this.updateCircle();
-        this.updateToolbarButtons();
-    }
-}
+        this.moving =
