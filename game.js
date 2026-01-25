@@ -37,9 +37,15 @@ let inventory = [];
 function switchScreen(id) {
     document.querySelectorAll('.screen, #game-screen').forEach(s => s.classList.add('hidden'));
     document.getElementById(id).classList.remove('hidden');
+    
+    // Update pause screen if showing
+    if (id === 'pause-screen' && currentMapData) {
+        updatePauseScreen();
+    }
 }
 
 function showMenu() { 
+    Game.gameActive = false;
     switchScreen('menu-screen'); 
 }
 
@@ -62,7 +68,7 @@ async function loadMission(file) {
         
         switchScreen('info-screen');
     } catch (error) {
-        alert(`Failed to load mission: ${error}`);
+        showFeedback(`Failed to load mission: ${error}`);
         showMissionList();
     }
 }
@@ -86,12 +92,18 @@ function addItem(id) {
     const existing = inventory.find(i => i.id === id);
     const totalQty = inventory.reduce((sum, i) => sum + i.qty, 0);
 
-    if (totalQty >= 5) return alert("Max capacity (5) reached!");
+    if (totalQty >= 5) {
+        showFeedback("Max capacity (5) reached!");
+        return;
+    }
 
     if (existing) {
         existing.qty++;
     } else {
-        if (inventory.length >= 3) return alert("Max 3 types allowed!");
+        if (inventory.length >= 3) {
+            showFeedback("Max 3 types allowed!");
+            return;
+        }
         inventory.push({ ...itemData, qty: 1 });
     }
     updateInvUI();
@@ -127,6 +139,30 @@ function updateInvUI() {
         const card = document.getElementById(`card-${it.id}`);
         if(card) card.classList.toggle('active', inventory.some(inv => inv.id === it.id));
     });
+    
+    // Update toolbar items
+    updateToolbar();
+}
+
+// Update toolbar function - EXACTLY like original
+function updateToolbar() {
+    const container = document.getElementById('dynamic-items');
+    container.innerHTML = inventory.map(item => `
+        <div class="tool-btn special" onclick="useItem('${item.id}')">
+            ${item.icon}<br>${item.name.split(' ')[0]}
+            <div class="qty-badge">${item.qty}</div>
+        </div>
+    `).join('');
+}
+
+// Item use function - like original
+function useItem(id) {
+    if (Game.currentTurn !== 'player') return;
+    
+    const item = inventory.find(i => i.id === id);
+    if (!item || item.qty <= 0) return;
+    
+    Items.useItem(id);
 }
 
 // Start game
@@ -142,6 +178,48 @@ function startGame() {
 // Pause function
 function togglePause(p) { 
     Game.togglePause(p);
+}
+
+// Update pause screen
+function updatePauseScreen() {
+    if (!currentMapData) return;
+    
+    document.getElementById('pause-name').textContent = currentMapData.name;
+    document.getElementById('pause-status').textContent = Player.hidden ? 'HIDDEN' : Player.spotted ? 'SPOTTED' : 'VISIBLE';
+    document.getElementById('pause-health').textContent = `${Player.health}/${Player.maxHealth}`;
+    document.getElementById('pause-ap').textContent = `${Player.actionPoints}/${Player.maxActionPoints}`;
+    document.getElementById('pause-objectives-count').textContent = `${Game.getCompletedObjectives()}/${Game.getObjectiveCount()}`;
+    document.getElementById('pause-turn').textContent = Game.currentTurn === 'player' ? 'Player' : 'Enemy';
+    document.getElementById('pause-stealth').textContent = Player.stealthKills;
+    document.getElementById('pause-combat').textContent = Player.combatKills;
+    document.getElementById('pause-rules').textContent = currentMapData.rules ? currentMapData.rules.join(', ') : 'None';
+    document.getElementById('pause-objectives').textContent = currentMapData.objectives ? currentMapData.objectives.join(', ') : 'None';
+}
+
+// Show feedback without browser alerts
+function showFeedback(text) {
+    if (Game.gameActive) {
+        Effects.createFeedback(Player.x, Player.y, text);
+    } else {
+        // Create a temporary feedback element
+        const feedback = document.createElement('div');
+        feedback.className = 'feedback-bubble';
+        feedback.textContent = text;
+        feedback.style.position = 'fixed';
+        feedback.style.top = '50%';
+        feedback.style.left = '50%';
+        feedback.style.transform = 'translate(-50%, -50%)';
+        feedback.style.zIndex = '1000';
+        
+        document.body.appendChild(feedback);
+        
+        // Remove after animation
+        setTimeout(() => {
+            if (feedback.parentNode) {
+                feedback.parentNode.removeChild(feedback);
+            }
+        }, 3000);
+    }
 }
 
 // Initialize on load
