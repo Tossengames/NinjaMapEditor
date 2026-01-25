@@ -1,5 +1,5 @@
 class Game {
-    static currentTurn = 'player'; // 'player' or 'enemy'
+    static currentTurn = 'player';
     static gameActive = false;
     static highlightedTiles = [];
     static turnsTaken = 0;
@@ -7,7 +7,6 @@ class Game {
     static missionCompleted = false;
     
     static init() {
-        // Initialize all systems
         Camera.init();
         Effects.init();
         Player.init();
@@ -22,22 +21,23 @@ class Game {
         this.timesSpotted = 0;
         this.missionCompleted = false;
         
-        Player.startTurn(); // Auto-start move mode
-        this.updateHUD();
-        this.showToolbar(true);
-        
-        // Initial camera focus
+        // Start camera on player
+        Camera.reset();
         Camera.smoothFocusOn(Player.x, Player.y);
         
-        Game.showFeedback("Mission started. Your turn.");
+        Player.startTurn();
+        this.showToolbar(true);
+        
+        showFeedback("Mission started. Your turn.");
+        draw();
     }
     
-    static endTurn() {
+    static async endTurn() {
         if (!this.gameActive) return;
         
         if (this.currentTurn === 'player') {
             // Player's turn ended
-            canvas.onclick = null; // Clear any click handlers
+            canvas.onclick = null;
             Game.clearHighlights();
             
             // Update items
@@ -48,27 +48,25 @@ class Game {
             this.turnsTaken++;
             this.showToolbar(false);
             
-            Game.showFeedback("Enemy turn...");
+            showFeedback("Enemy turn...");
             
             // Enemy AI takes turns
-            setTimeout(() => {
-                EnemyManager.takeTurns().then(() => {
-                    // Enemy turn finished
-                    this.currentTurn = 'player';
-                    Player.startTurn(); // Auto-start move for next turn
-                    this.showToolbar(true);
-                    
-                    // Check win/lose conditions
-                    this.checkGameState();
-                    
-                    Game.showFeedback("Your turn.");
-                    this.updateHUD();
-                    draw();
-                });
-            }, 1000);
+            await EnemyManager.takeTurns();
+            
+            // Enemy turn finished
+            this.currentTurn = 'player';
+            
+            // Check win/lose conditions
+            this.checkGameState();
+            
+            if (this.gameActive) {
+                Player.startTurn();
+                this.showToolbar(true);
+                Camera.smoothFocusOn(Player.x, Player.y);
+                showFeedback("Your turn.");
+            }
         }
         
-        this.updateHUD();
         draw();
     }
     
@@ -77,43 +75,6 @@ class Game {
         if (toolbar) {
             toolbar.style.display = show ? 'flex' : 'none';
         }
-        
-        // Update turn indicator
-        const turnEl = document.getElementById('hud-turn');
-        if (turnEl) {
-            turnEl.textContent = show ? 'Player' : 'Enemy';
-            turnEl.style.color = show ? '#00ff00' : '#ff0000';
-        }
-        
-        // Update player toolbar buttons
-        if (show) {
-            Player.updateToolbarButtons();
-        }
-    }
-    
-    static updateHUD() {
-        if (!currentMapData) return;
-        
-        document.getElementById('hud-name').innerText = currentMapData.name;
-        
-        const statusEl = document.getElementById('hud-status');
-        if (Player.spotted) {
-            statusEl.innerText = 'SPOTTED!';
-            statusEl.className = 'status bad';
-        } else if (Player.hidden) {
-            statusEl.innerText = 'HIDDEN';
-            statusEl.className = 'status good';
-        } else {
-            statusEl.innerText = 'VISIBLE';
-            statusEl.className = 'status warning';
-        }
-        
-        const totalObj = Game.getObjectiveCount();
-        const completed = Game.getCompletedObjectives();
-        document.getElementById('hud-objectives').innerText = `${completed}/${totalObj}`;
-        
-        // Update character circle
-        Player.updateCircle();
     }
     
     static highlightTiles(tiles, color, alpha) {
@@ -134,11 +95,6 @@ class Game {
     static clearHighlights() {
         this.highlightedTiles = [];
         draw();
-    }
-    
-    static showFeedback(text) {
-        // Create feedback bubble at player position
-        Effects.createFeedback(Player.x, Player.y, text);
     }
     
     static checkGameState() {
@@ -173,7 +129,7 @@ class Game {
         if (currentMapData.objectives && currentMapData.objectives.includes("kill all enemies")) {
             if (EnemyManager.enemies.length === 0) {
                 this.missionCompleted = true;
-                Game.showFeedback("All enemies eliminated!");
+                showFeedback("All enemies eliminated!");
             }
         }
     }
@@ -186,7 +142,7 @@ class Game {
         if (currentMapData.rules) {
             if (currentMapData.rules.includes("don't be spotted") && Player.spotted) {
                 canExit = false;
-                Game.showFeedback("You were spotted! Cannot exit.");
+                missingObjectives.push("You were spotted!");
             }
         }
         
@@ -196,7 +152,7 @@ class Game {
                 if (obj.type === 'documents' || obj.type === 'steal') {
                     // Check if player has the item
                     const hasItem = Items.placedItems.some(i => 
-                        i.type === 'documents' && 
+                        (i.type === 'documents' || i.type === obj.type) && 
                         i.x === Player.x && 
                         i.y === Player.y
                     );
@@ -224,17 +180,9 @@ class Game {
         if (canExit) {
             this.showWinScreen();
         } else {
-            // Show exit confirmation with missing objectives
+            // Show exit confirmation in-game (no browser alert)
             let message = "Cannot exit yet:\n" + missingObjectives.join("\n");
-            message += "\n\nStay and complete mission?";
-            
-            if (confirm(message)) {
-                // Player chooses to stay
-                Game.showFeedback("Continue mission...");
-            } else {
-                // Player chooses to leave (mission failed)
-                this.gameOver("Mission abandoned!");
-            }
+            showFeedback(message);
         }
     }
     
@@ -255,7 +203,7 @@ class Game {
             currentMapData.objects.forEach(obj => {
                 if (obj.type === 'documents' || obj.type === 'steal') {
                     const hasItem = Items.placedItems.some(i => 
-                        i.type === 'documents' && 
+                        (i.type === 'documents' || i.type === obj.type) && 
                         i.x === Player.x && 
                         i.y === Player.y
                     );
@@ -325,67 +273,9 @@ class Game {
     
     static togglePause(show) {
         if (show) {
-            // Update pause screen with current mission info
-            document.getElementById('pause-rules').textContent = 
-                currentMapData.rules ? currentMapData.rules.join(', ') : 'None';
-            document.getElementById('pause-objectives').textContent = 
-                currentMapData.objectives ? currentMapData.objectives.join(', ') : 'None';
+            updatePauseScreen();
         }
         
         document.getElementById('pause-screen').classList.toggle('hidden', !show);
     }
-}
-
-// Update the toolbar update function
-function updateToolbar() {
-    const container = document.getElementById('dynamic-items');
-    container.innerHTML = inventory.map(item => `
-        <div class="tool-btn special" onclick="Player.startItemUse('${item.id}')">
-            ${item.icon}<br>USE
-            <div class="qty-badge">${item.qty}</div>
-        </div>
-    `).join('');
-}
-
-// Add tutorial function
-function showTutorial() {
-    alert(`TENCHU-STYLE STEALTH GAME CONTROLS:
-
-MOVEMENT:
-- Automatically starts in move mode each turn
-- Click on green highlighted tiles to move (3 tiles max)
-- Each tile costs 1 Action Point (AP)
-
-STEALTH:
-- Automatically hide when standing on dark/shaded tiles
-- Hidden enemies can't see you
-- Hidden + close to enemy = STEALTH KILL opportunity
-
-COMBAT:
-- Click ATTACK when enemies are in range (1 tile)
-- Hidden + close to unaware enemy = STEALTH KILL (instant, no AP cost)
-- Regular attack costs 1 AP, alerts enemies
-
-ITEMS:
-- Use items from toolbar (3 tile range)
-- Selecting an item shows yellow placement tiles
-- Click to place item
-- Item use automatically ends turn
-
-CAMERA:
-- Drag to pan
-- Pinch or scroll to zoom
-- Camera focuses on current unit
-- Can override focus by interacting (returns after 2 seconds)
-
-ENEMY STATES:
-- Green: Normal patrol
-- Orange: Investigating
-- Purple: Alerted
-- Red: Chasing/Attacking
-
-WIN CONDITIONS:
-- Complete mission objectives
-- Reach the red exit tile
-- Follow mission rules`);
 }
