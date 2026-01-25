@@ -9,13 +9,20 @@ class Camera {
     static shakeTimer = 0;
     static isFocusing = false;
     static focusTarget = null;
-    static originalPos = null;
+    static originalPos = { x: 0, y: 0 };
+    static returnTimer = null;
+    static userInteracted = false;
     
     static init() {
+        this.reset();
+        
         // Input handlers for panning and zooming
         const getPos = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
         
         const start = (e) => {
+            this.userInteracted = true;
+            this.cancelReturnToFocus();
+            
             if (e.touches && e.touches.length === 2) {
                 this.touchDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
             } else {
@@ -25,33 +32,66 @@ class Camera {
         };
         
         const move = (e) => {
-            if (this.isFocusing) return;
-            
             if (e.touches && e.touches.length === 2) {
                 const curDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
-                if (this.touchDist > 0) this.zoom = Math.min(Math.max(0.4, this.zoom * (curDist / this.touchDist)), 4);
+                if (this.touchDist > 0) {
+                    const newZoom = Math.min(Math.max(0.4, this.zoom * (curDist / this.touchDist)), 4);
+                    if (newZoom !== this.zoom) {
+                        this.userInteracted = true;
+                        this.cancelReturnToFocus();
+                    }
+                    this.zoom = newZoom;
+                }
                 this.touchDist = curDist;
                 draw();
             } else if (this.isDragging) {
                 const pos = getPos(e);
-                this.x += (pos.x - this.lastMouse.x) / this.zoom;
-                this.y += (pos.y - this.lastMouse.y) / this.zoom;
+                const dx = (pos.x - this.lastMouse.x) / this.zoom;
+                const dy = (pos.y - this.lastMouse.y) / this.zoom;
+                
+                if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+                    this.userInteracted = true;
+                    this.cancelReturnToFocus();
+                }
+                
+                this.x += dx;
+                this.y += dy;
                 this.lastMouse = pos;
                 draw();
+            }
+        };
+        
+        const end = () => {
+            this.isDragging = false;
+            this.touchDist = 0;
+            
+            // If user was interacting, start timer to return to focus
+            if (this.userInteracted && this.isFocusing && this.focusTarget) {
+                this.startReturnToFocus();
             }
         };
         
         canvas.addEventListener('mousedown', start);
         canvas.addEventListener('touchstart', start, {passive: false});
         window.addEventListener('mousemove', move);
-        window.addEventListener('touchmove', (e) => { if(e.touches.length > 1) e.preventDefault(); move(e); }, {passive: false});
-        window.addEventListener('mouseup', () => this.isDragging = false);
-        window.addEventListener('touchend', () => { this.isDragging = false; this.touchDist = 0; });
+        window.addEventListener('touchmove', (e) => { 
+            if(e.touches.length > 1) e.preventDefault(); 
+            move(e); 
+        }, {passive: false});
+        window.addEventListener('mouseup', end);
+        window.addEventListener('touchend', end);
         
         window.addEventListener('wheel', e => {
-            if (this.isFocusing) return;
-            this.zoom = Math.min(Math.max(0.4, this.zoom * (e.deltaY > 0 ? 0.9 : 1.1)), 4);
-            draw();
+            this.userInteracted = true;
+            this.cancelReturnToFocus();
+            
+            const newZoom = Math.min(Math.max(0.4, this.zoom * (e.deltaY > 0 ? 0.9 : 1.1)), 4);
+            if (newZoom !== this.zoom) {
+                this.zoom = newZoom;
+                draw();
+            }
+            
+            e.preventDefault();
         }, {passive: false});
     }
     
@@ -59,30 +99,55 @@ class Camera {
         // Update camera shake
         if (this.shakeTimer > 0) {
             this.shakeTimer--;
-            const shakeX = (Math.random() - 0.5) * this.shakeAmount;
-            const shakeY = (Math.random() - 0.5) * this.shakeAmount;
-            
-            ctx.save();
-            ctx.translate(shakeX, shakeY);
         }
         
-        // Update camera focus
-        if (this.isFocusing && this.focusTarget) {
-            const targetX = this.focusTarget.x;
-            const targetY = this.focusTarget.y;
-            
-            // Smoothly move camera toward target
-            const targetScreenX = -((targetX * currentMapData.tilesize) - canvas.width/2);
-            const targetScreenY = -((targetY * currentMapData.tilesize) - canvas.height/2);
-            
-            this.x += (targetScreenX - this.x) * 0.1;
-            this.y += (targetScreenY - this.y) * 0.1;
-            
-            // Check if close enough
-            if (Math.abs(this.x - targetScreenX) < 5 && Math.abs(this.y - targetScreenY) < 5) {
-                this.isFocusing = false;
-                this.focusTarget = null;
-            }
+        // Update camera focus if not user-interacted
+        if (this.isFocusing && this.focusTarget && !this.userInteracted) {
+            this.smoothFocus();
+        }
+    }
+    
+    static smoothFocus() {
+        if (!this.focusTarget || !currentMapData) return;
+        
+        const targetX = this.focusTarget.x;
+        const targetY = this.focusTarget.y;
+        const size = currentMapData.tilesize;
+        
+        // Calculate target camera position (center on tile)
+        const targetCamX = -((targetX * size) - canvas.width / (2 * this.zoom));
+        const targetCamY = -((targetY * size) - canvas.height / (2 * this.zoom));
+        
+        // Smooth interpolation
+        const speed = 0.1;
+        this.x += (targetCamX - this.x) * speed;
+        this.y += (targetCamY - this.y) * speed;
+        
+        // Check if close enough
+        if (Math.abs(this.x - targetCamX) < 1 && Math.abs(this.y - targetCamY) < 1) {
+            this.x = targetCamX;
+            this.y = targetCamY;
+        }
+    }
+    
+    static smoothFocusOn(x, y) {
+        this.focusTarget = { x, y };
+        this.isFocusing = true;
+        this.userInteracted = false;
+        this.cancelReturnToFocus();
+    }
+    
+    static startReturnToFocus() {
+        this.cancelReturnToFocus();
+        this.returnTimer = setTimeout(() => {
+            this.userInteracted = false;
+        }, 2000); // Return to focus after 2 seconds of inactivity
+    }
+    
+    static cancelReturnToFocus() {
+        if (this.returnTimer) {
+            clearTimeout(this.returnTimer);
+            this.returnTimer = null;
         }
     }
     
@@ -115,9 +180,23 @@ class Camera {
         return { x: worldX, y: worldY };
     }
     
-    static focusOn(x, y) {
-        this.focusTarget = { x, y };
-        this.isFocusing = true;
+    static worldToTile(worldX, worldY) {
+        if (!currentMapData) return null;
+        
+        const size = currentMapData.tilesize;
+        const startX = -(currentMapData.cols * size) / 2;
+        const startY = -(currentMapData.rows * size) / 2;
+        
+        const tileX = Math.floor((worldX - startX) / size);
+        const tileY = Math.floor((worldY - startY) / size);
+        
+        // Check bounds
+        if (tileX < 0 || tileX >= currentMapData.cols || 
+            tileY < 0 || tileY >= currentMapData.rows) {
+            return null;
+        }
+        
+        return { tileX, tileY };
     }
     
     static shake(amount, duration) {
@@ -132,5 +211,14 @@ class Camera {
         this.isDragging = false;
         this.isFocusing = false;
         this.focusTarget = null;
+        this.userInteracted = false;
+        this.cancelReturnToFocus();
+        
+        // Center on player if game has started
+        if (currentMapData && Game.gameActive) {
+            const size = currentMapData.tilesize;
+            this.x = -((Player.x * size) - canvas.width/2);
+            this.y = -((Player.y * size) - canvas.height/2);
+        }
     }
 }
