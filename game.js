@@ -198,6 +198,19 @@ function updateHUD() {
     const totalObj = gameState.objectives.length;
     const completed = gameState.completed.length;
     document.getElementById('hud-objectives').innerText = `${completed}/${totalObj}`;
+    
+    // Update character circle content
+    const charCircle = document.getElementById('char-circle');
+    if (gameState.player.hidden) {
+        charCircle.innerHTML = "🫥";
+        charCircle.style.borderColor = "#666";
+    } else if (gameState.player.spotted) {
+        charCircle.innerHTML = "🚨";
+        charCircle.style.borderColor = "#ff0000";
+    } else {
+        charCircle.innerHTML = "👤";
+        charCircle.style.borderColor = "var(--gold)";
+    }
 }
 
 function updateToolbar() {
@@ -231,6 +244,7 @@ function useItem(id) {
             case 'heal':
                 gameState.player.health = Math.min(100, gameState.player.health + 30);
                 alert(`${item.name} used! Health restored.`);
+                updateHUD();
                 break;
             case 'slow':
                 alert(`${item.name} scattered! Enemies will move slower.`);
@@ -247,7 +261,7 @@ function gameAction(action) {
     
     switch(action) {
         case 'move':
-            startMoveMode();
+            alert("Movement system will be implemented separately.");
             break;
         case 'hide':
             toggleHide();
@@ -255,51 +269,6 @@ function gameAction(action) {
         case 'wait':
             endTurn();
             break;
-    }
-}
-
-function startMoveMode() {
-    alert("Click on a walkable tile to move there.\nGreen = safe, Yellow = objective, Red = enemy");
-    canvas.onclick = handleMoveClick;
-}
-
-function handleMoveClick(e) {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    // Convert screen to world coordinates
-    const worldX = (x - canvas.width/2) / camera.zoom - camera.x;
-    const worldY = (y - canvas.height/2) / camera.zoom - camera.y;
-    
-    const size = currentMapData.tilesize;
-    const startX = -(currentMapData.cols * size) / 2;
-    const startY = -(currentMapData.rows * size) / 2;
-    
-    const tileX = Math.floor((worldX - startX) / size);
-    const tileY = Math.floor((worldY - startY) / size);
-    
-    // Check if tile is valid
-    if (tileX >= 0 && tileX < currentMapData.cols && tileY >= 0 && tileY < currentMapData.rows) {
-        const tileIndex = tileY * currentMapData.cols + tileX;
-        const tileId = currentMapData.grid[tileIndex];
-        const tileInfo = TILE_DATA[tileId];
-        
-        if (tileInfo && tileInfo.walkable) {
-            // Check if tile has enemy
-            const hasEnemy = gameState.enemies.some(e => e.x === tileX && e.y === tileY);
-            if (!hasEnemy) {
-                gameState.player.x = tileX;
-                gameState.player.y = tileY;
-                canvas.onclick = null;
-                checkTileEffects(tileId);
-                endTurn();
-            } else {
-                alert("Cannot move onto enemy tile!");
-            }
-        } else {
-            alert("Cannot move there!");
-        }
     }
 }
 
@@ -319,62 +288,10 @@ function toggleHide() {
     }
 }
 
-function checkTileEffects(tileId) {
-    switch(tileId) {
-        case 99: // Exit
-            checkWinCondition();
-            break;
-        case 200: // Danger
-            if (!gameState.player.hidden) {
-                gameState.player.health -= 20;
-                alert("Danger! Took 20 damage.");
-                if (gameState.player.health <= 0) gameOver("You died!");
-            }
-            break;
-        case 300: // Objective
-        case 301: // Steal
-            completeObjective("collect");
-            break;
-        case 302: // Target
-            if (currentMapData.objectives.includes("kill target")) {
-                completeObjective("kill target");
-            }
-            break;
-    }
-}
-
-function completeObjective(type) {
-    const obj = gameState.objectives.find(o => o.type === type || type === "collect");
-    if (obj && !gameState.completed.includes(obj.name)) {
-        gameState.completed.push(obj.name);
-        alert(`Objective completed: ${obj.name}`);
-        updateHUD();
-        checkWinCondition();
-    }
-}
-
-function checkWinCondition() {
-    const exitTile = currentMapData.grid.findIndex(id => id === 99);
-    const exitY = Math.floor(exitTile / currentMapData.cols);
-    const exitX = exitTile % currentMapData.cols;
-    
-    if (gameState.player.x === exitX && gameState.player.y === exitY) {
-        // Check if all objectives completed
-        const allObjectives = gameState.objectives.map(o => o.name);
-        const allCompleted = allObjectives.every(obj => gameState.completed.includes(obj));
-        
-        if (allCompleted || gameState.objectives.length === 0) {
-            gameOver("Mission Successful!");
-        } else {
-            alert("Exit reached but objectives incomplete!");
-        }
-    }
-}
-
 function endTurn() {
     gameState.turn++;
     
-    // Enemy AI
+    // Enemy AI (simple placeholder - will be moved to separate script)
     gameState.enemies.forEach(enemy => {
         if (!gameState.player.hidden) {
             const dist = Math.abs(enemy.x - gameState.player.x) + Math.abs(enemy.y - gameState.player.y);
@@ -433,6 +350,9 @@ function initInput() {
             draw();
         }
     };
+    
+    // Remove click handlers for movement
+    canvas.onclick = null;
     
     canvas.addEventListener('mousedown', start);
     canvas.addEventListener('touchstart', start, {passive: false});
@@ -495,14 +415,6 @@ function draw() {
         ctx.arc(x + size/2, y + size/2, size/3, 0, Math.PI * 2);
         ctx.fill();
         
-        // Enemy eyes (vision cone)
-        ctx.strokeStyle = 'rgba(255,100,100,0.3)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x + size/2, y + size/2);
-        ctx.lineTo(x + size/2 + size * 1.5, y + size/2);
-        ctx.stroke();
-        
         // Enemy label
         ctx.fillStyle = 'white';
         ctx.font = '8px Arial';
@@ -561,14 +473,6 @@ function draw() {
     ctx.fillRect(playerX, playerY - 8, size * (gameState.player.health / 100), 4);
 
     ctx.restore();
-    
-    // Update character circle position indicator
-    const circle = document.getElementById('char-circle');
-    const screenX = (playerX + size/2) * camera.zoom + canvas.width/2 + camera.x * camera.zoom;
-    const screenY = (playerY + size/2) * camera.zoom + canvas.height/2 + camera.y * camera.zoom;
-    
-    circle.style.left = (screenX - 32) + 'px';
-    circle.style.top = (screenY - 100) + 'px'; // Above toolbar
 }
 
 function togglePause(p) { 
