@@ -1,18 +1,27 @@
 class Items {
     static placedItems = [];
     static itemCounter = 0;
+    static currentItemUse = null;
     
     static useItem(itemId) {
         if (Game.currentTurn !== 'player' || Player.actionPoints <= 0) return;
         
+        Player.currentAction = 'item';
+        this.currentItemUse = itemId;
+        this.prepareItemUse(itemId);
+    }
+    
+    static prepareItemUse(itemId) {
         const item = inventory.find(i => i.id === itemId);
         if (!item || item.qty <= 0) return;
         
-        // Calculate usable tiles
+        // Calculate usable tiles (3 tiles range)
         const usableTiles = this.getUsableTiles();
         
         if (usableTiles.length === 0) {
             Game.showFeedback("No usable tiles in range!");
+            Player.currentAction = null;
+            this.currentItemUse = null;
             return;
         }
         
@@ -22,8 +31,11 @@ class Items {
         // Set up click handler for item placement
         canvas.onclick = (e) => {
             const pos = Camera.screenToWorld(e.clientX, e.clientY);
-            const tileX = Math.floor((pos.x + (currentMapData.cols * currentMapData.tilesize) / 2) / currentMapData.tilesize);
-            const tileY = Math.floor((pos.y + (currentMapData.rows * currentMapData.tilesize) / 2) / currentMapData.tilesize);
+            const tilePos = Camera.worldToTile(pos.x, pos.y);
+            
+            if (!tilePos) return;
+            
+            const { tileX, tileY } = tilePos;
             
             // Check if tile is usable
             const isUsable = usableTiles.some(t => t.x === tileX && t.y === tileY);
@@ -31,6 +43,8 @@ class Items {
                 this.placeItem(item, tileX, tileY);
                 canvas.onclick = null;
                 Game.clearHighlights();
+                Player.currentAction = null;
+                this.currentItemUse = null;
             }
         };
         
@@ -58,11 +72,11 @@ class Items {
                 const tileInfo = TILE_DATA[tileId];
                 
                 if (tileInfo && tileInfo.walkable) {
-                    // Check if tile has enemy or item
+                    // Check if tile has enemy or active item
                     const hasEnemy = EnemyManager.enemies.some(e => e.x === x && e.y === y);
-                    const hasItem = this.placedItems.some(i => i.x === x && i.y === y);
+                    const hasActiveItem = this.placedItems.some(i => i.x === x && i.y === y && !i.active);
                     
-                    if (!hasEnemy && !hasItem) {
+                    if (!hasEnemy && !hasActiveItem) {
                         tiles.push({ x, y, distance: dist });
                     }
                 }
@@ -104,15 +118,15 @@ class Items {
         // Show placement effect
         Effects.createPlacement(x, y, item.icon);
         Sound.play('item_place');
+        Camera.smoothFocusOn(x, y);
         Game.showFeedback(`${item.name} placed at (${x}, ${y})`);
         
         // Update toolbar
         updateToolbar();
+        Player.updateToolbarButtons();
         
-        // If no action points left, end turn
-        if (Player.actionPoints <= 0) {
-            setTimeout(() => Game.endTurn(), 500);
-        }
+        // Auto-end turn after item use
+        setTimeout(() => Game.endTurn(), 800);
         
         draw();
     }
@@ -145,6 +159,7 @@ class Items {
             Player.takeDamage(30);
             Effects.createExplosion(x, y, 1);
             Sound.play('trap_trigger');
+            Camera.shake(5, 300);
             Game.showFeedback("Stepped on a trap!");
         }
     }
@@ -189,6 +204,7 @@ class Items {
     }
     
     static activateBomb(item) {
+        Camera.smoothFocusOn(item.x, item.y);
         Effects.createExplosion(item.x, item.y, item.range);
         Sound.play('explosion');
         Camera.shake(10, 500);
@@ -222,6 +238,7 @@ class Items {
     }
     
     static activateGas(item) {
+        Camera.smoothFocusOn(item.x, item.y);
         Effects.createGasCloud(item.x, item.y, item.range);
         Sound.play('gas_release');
         
@@ -241,6 +258,7 @@ class Items {
     }
     
     static activateRice(item) {
+        Camera.smoothFocusOn(item.x, item.y);
         Effects.createParticles(item.x, item.y, '🍙', 10);
         Sound.play('item_place');
         
@@ -264,6 +282,7 @@ class Items {
                     if (!item.active) {
                         item.active = true;
                         if (enemy.takeDamage(999)) {
+                            Camera.smoothFocusOn(item.x, item.y);
                             Effects.createBlood(enemy.x, enemy.y);
                             Sound.play('trap_trigger');
                             Game.showFeedback(`${enemy.type} killed by trap!`);
