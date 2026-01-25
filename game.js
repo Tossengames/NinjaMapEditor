@@ -1,24 +1,48 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-const levelFiles = ["level1.json"]; 
+const levelFiles = ["level1.json", "level2.json"]; 
 const AVAILABLE_ITEMS = [
-    { id: 'rice', name: 'Poison Rice', icon: '🍙' },
-    { id: 'bomb', name: 'Smoke Bomb', icon: '💨' },
-    { id: 'gas', name: 'Sleep Gas', icon: '🧪' },
-    { id: 'potion', name: 'Health Pot', icon: '❤️' },
-    { id: 'trap', name: 'Caltrops', icon: '🪤' }
+    { id: 'rice', name: 'Poison Rice', icon: '🍙', effect: 'distract' },
+    { id: 'bomb', name: 'Smoke Bomb', icon: '💨', effect: 'blind' },
+    { id: 'gas', name: 'Sleep Gas', icon: '🧪', effect: 'sleep' },
+    { id: 'potion', name: 'Health Pot', icon: '❤️', effect: 'heal' },
+    { id: 'trap', name: 'Caltrops', icon: '🪤', effect: 'slow' }
 ];
 
+// Enhanced tile system
 const TILE_DATA = {
-    0: { color: '#444' }, 20: { color: '#111' }, 50: { color: '#1a3300' },
-    70: { color: '#ff00ff' }, 99: { color: '#ffcc00' }, 100: { color: '#00ff00' }, 200: { color: '#ff0000' }
+    0: { color: '#444', name: 'floor', walkable: true }, 
+    20: { color: '#111', name: 'wall', walkable: false },
+    50: { color: '#1a3300', name: 'grass', walkable: true, hide: true },
+    70: { color: '#ff00ff', name: 'dark', walkable: true, hide: true },
+    80: { color: '#2a2a5a', name: 'water', walkable: false },
+    90: { color: '#5a2a2a', name: 'blood', walkable: true },
+    99: { color: '#ffcc00', name: 'exit', walkable: true },
+    100: { color: '#00ff00', name: 'start', walkable: true },
+    101: { color: '#00ff88', name: 'hiding', walkable: true, hide: true },
+    200: { color: '#ff0000', name: 'danger', walkable: true },
+    201: { color: '#ff4444', name: 'enemy', walkable: true },
+    202: { color: '#ff8844', name: 'boss', walkable: true },
+    300: { color: '#ffff00', name: 'objective', walkable: true },
+    301: { color: '#ffaa00', name: 'steal', walkable: true },
+    302: { color: '#aa00ff', name: 'target', walkable: true }
 };
 
+// Game state
 let currentMapData = null;
-let inventory = []; // [{id, name, icon, qty}]
+let inventory = [];
 let camera = { x: 0, y: 0, zoom: 1, isDragging: false, lastMouse: { x: 0, y: 0 } };
 let touchDist = 0;
+let gameState = {
+    player: { x: 0, y: 0, hidden: false, health: 100, spotted: false },
+    enemies: [],
+    objectives: [],
+    rules: [],
+    completed: [],
+    gameOver: false,
+    turn: 0
+};
 
 // --- NAVIGATION ---
 function switchScreen(id) {
@@ -26,21 +50,33 @@ function switchScreen(id) {
     document.getElementById(id).classList.remove('hidden');
 }
 
-function showMenu() { switchScreen('menu-screen'); }
+function showMenu() { 
+    gameState.gameOver = false;
+    switchScreen('menu-screen'); 
+}
 
 function showMissionList() {
     switchScreen('mission-screen');
     const list = document.getElementById('level-list');
-    list.innerHTML = levelFiles.map(f => `<div class="list-item" onclick="loadMission('${f}')">${f.toUpperCase()}</div>`).join('');
+    list.innerHTML = levelFiles.map(f => `<div class="list-item" onclick="loadMission('${f}')">${f.replace('.json', '').toUpperCase()}</div>`).join('');
 }
 
 async function loadMission(file) {
-    const res = await fetch(file);
-    currentMapData = await res.json();
-    document.getElementById('info-name').innerText = currentMapData.name;
-    document.getElementById('info-story').innerText = currentMapData.story;
-    document.getElementById('info-rules').innerText = currentMapData.rules;
-    switchScreen('info-screen');
+    try {
+        const res = await fetch(file);
+        currentMapData = await res.json();
+        
+        // Update UI
+        document.getElementById('info-name').innerText = currentMapData.name;
+        document.getElementById('info-story').innerText = currentMapData.story;
+        document.getElementById('info-rules').innerText = currentMapData.rules ? currentMapData.rules.join(', ') : 'None';
+        document.getElementById('info-objectives').innerText = currentMapData.objectives ? currentMapData.objectives.join(', ') : 'None';
+        
+        switchScreen('info-screen');
+    } catch (error) {
+        alert(`Failed to load mission: ${error}`);
+        showMissionList();
+    }
 }
 
 // --- INVENTORY LOGIC ---
@@ -107,10 +143,61 @@ function updateInvUI() {
 
 // --- GAME LOGIC ---
 function startGame() {
+    if (!currentMapData) return;
+    
+    // Initialize game state from map data
+    gameState = {
+        player: { 
+            x: currentMapData.player?.x || 1, 
+            y: currentMapData.player?.y || 1, 
+            hidden: false, 
+            health: 100, 
+            spotted: false,
+            inHiding: false
+        },
+        enemies: currentMapData.enemies ? [...currentMapData.enemies] : [],
+        objectives: currentMapData.objects ? [...currentMapData.objects] : [],
+        rules: currentMapData.rules ? [...currentMapData.rules] : [],
+        completed: [],
+        gameOver: false,
+        turn: 0
+    };
+    
     switchScreen('game-screen');
+    updateHUD();
     updateToolbar();
-    camera.x = 0; camera.y = 0; camera.zoom = 1;
+    camera.x = 0; 
+    camera.y = 0; 
+    camera.zoom = 1;
+    
+    // Center camera on player
+    const size = currentMapData.tilesize;
+    camera.x = -((gameState.player.x * size) - canvas.width/2);
+    camera.y = -((gameState.player.y * size) - canvas.height/2);
+    
     draw();
+}
+
+function updateHUD() {
+    if (!currentMapData) return;
+    
+    document.getElementById('hud-name').innerText = currentMapData.name;
+    
+    const statusEl = document.getElementById('hud-status');
+    if (gameState.player.spotted) {
+        statusEl.innerText = 'SPOTTED!';
+        statusEl.className = 'status bad';
+    } else if (gameState.player.hidden) {
+        statusEl.innerText = 'HIDDEN';
+        statusEl.className = 'status good';
+    } else {
+        statusEl.innerText = 'VISIBLE';
+        statusEl.className = 'status warning';
+    }
+    
+    const totalObj = gameState.objectives.length;
+    const completed = gameState.completed.length;
+    document.getElementById('hud-objectives').innerText = `${completed}/${totalObj}`;
 }
 
 function updateToolbar() {
@@ -128,9 +215,197 @@ function useItem(id) {
     if (item && item.qty > 0) {
         item.qty--;
         if (item.qty <= 0) inventory = inventory.filter(i => i.id !== id);
-        alert(`Used ${item.name}!`);
+        
+        // Apply item effect
+        switch(item.effect) {
+            case 'distract':
+                alert(`${item.name} thrown! Enemies are distracted.`);
+                // Implement distraction logic
+                break;
+            case 'blind':
+                alert(`${item.name} deployed! Reduced enemy vision.`);
+                break;
+            case 'sleep':
+                alert(`${item.name} released! Nearby enemies may fall asleep.`);
+                break;
+            case 'heal':
+                gameState.player.health = Math.min(100, gameState.player.health + 30);
+                alert(`${item.name} used! Health restored.`);
+                break;
+            case 'slow':
+                alert(`${item.name} scattered! Enemies will move slower.`);
+                break;
+        }
+        
         updateToolbar();
+        draw();
     }
+}
+
+function gameAction(action) {
+    if (gameState.gameOver) return;
+    
+    switch(action) {
+        case 'move':
+            startMoveMode();
+            break;
+        case 'hide':
+            toggleHide();
+            break;
+        case 'wait':
+            endTurn();
+            break;
+    }
+}
+
+function startMoveMode() {
+    alert("Click on a walkable tile to move there.\nGreen = safe, Yellow = objective, Red = enemy");
+    canvas.onclick = handleMoveClick;
+}
+
+function handleMoveClick(e) {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Convert screen to world coordinates
+    const worldX = (x - canvas.width/2) / camera.zoom - camera.x;
+    const worldY = (y - canvas.height/2) / camera.zoom - camera.y;
+    
+    const size = currentMapData.tilesize;
+    const startX = -(currentMapData.cols * size) / 2;
+    const startY = -(currentMapData.rows * size) / 2;
+    
+    const tileX = Math.floor((worldX - startX) / size);
+    const tileY = Math.floor((worldY - startY) / size);
+    
+    // Check if tile is valid
+    if (tileX >= 0 && tileX < currentMapData.cols && tileY >= 0 && tileY < currentMapData.rows) {
+        const tileIndex = tileY * currentMapData.cols + tileX;
+        const tileId = currentMapData.grid[tileIndex];
+        const tileInfo = TILE_DATA[tileId];
+        
+        if (tileInfo && tileInfo.walkable) {
+            // Check if tile has enemy
+            const hasEnemy = gameState.enemies.some(e => e.x === tileX && e.y === tileY);
+            if (!hasEnemy) {
+                gameState.player.x = tileX;
+                gameState.player.y = tileY;
+                canvas.onclick = null;
+                checkTileEffects(tileId);
+                endTurn();
+            } else {
+                alert("Cannot move onto enemy tile!");
+            }
+        } else {
+            alert("Cannot move there!");
+        }
+    }
+}
+
+function toggleHide() {
+    const tileIndex = gameState.player.y * currentMapData.cols + gameState.player.x;
+    const tileId = currentMapData.grid[tileIndex];
+    const tileInfo = TILE_DATA[tileId];
+    
+    if (tileInfo && tileInfo.hide) {
+        gameState.player.hidden = !gameState.player.hidden;
+        gameState.player.inHiding = gameState.player.hidden;
+        alert(gameState.player.hidden ? "You're now hiding!" : "You left hiding spot.");
+        updateHUD();
+        draw();
+    } else {
+        alert("No hiding spot here!");
+    }
+}
+
+function checkTileEffects(tileId) {
+    switch(tileId) {
+        case 99: // Exit
+            checkWinCondition();
+            break;
+        case 200: // Danger
+            if (!gameState.player.hidden) {
+                gameState.player.health -= 20;
+                alert("Danger! Took 20 damage.");
+                if (gameState.player.health <= 0) gameOver("You died!");
+            }
+            break;
+        case 300: // Objective
+        case 301: // Steal
+            completeObjective("collect");
+            break;
+        case 302: // Target
+            if (currentMapData.objectives.includes("kill target")) {
+                completeObjective("kill target");
+            }
+            break;
+    }
+}
+
+function completeObjective(type) {
+    const obj = gameState.objectives.find(o => o.type === type || type === "collect");
+    if (obj && !gameState.completed.includes(obj.name)) {
+        gameState.completed.push(obj.name);
+        alert(`Objective completed: ${obj.name}`);
+        updateHUD();
+        checkWinCondition();
+    }
+}
+
+function checkWinCondition() {
+    const exitTile = currentMapData.grid.findIndex(id => id === 99);
+    const exitY = Math.floor(exitTile / currentMapData.cols);
+    const exitX = exitTile % currentMapData.cols;
+    
+    if (gameState.player.x === exitX && gameState.player.y === exitY) {
+        // Check if all objectives completed
+        const allObjectives = gameState.objectives.map(o => o.name);
+        const allCompleted = allObjectives.every(obj => gameState.completed.includes(obj));
+        
+        if (allCompleted || gameState.objectives.length === 0) {
+            gameOver("Mission Successful!");
+        } else {
+            alert("Exit reached but objectives incomplete!");
+        }
+    }
+}
+
+function endTurn() {
+    gameState.turn++;
+    
+    // Enemy AI
+    gameState.enemies.forEach(enemy => {
+        if (!gameState.player.hidden) {
+            const dist = Math.abs(enemy.x - gameState.player.x) + Math.abs(enemy.y - gameState.player.y);
+            if (dist <= 3) {
+                gameState.player.spotted = true;
+                alert("Enemy spotted you!");
+            }
+        }
+        
+        // Simple patrol
+        if (enemy.patrol && enemy.patrol.length > 0) {
+            const next = enemy.patrol[gameState.turn % enemy.patrol.length];
+            enemy.x = next[0];
+            enemy.y = next[1];
+        }
+    });
+    
+    // Check rules
+    if (gameState.rules.includes("don't be spotted") && gameState.player.spotted) {
+        gameOver("You were spotted! Mission failed.");
+        return;
+    }
+    
+    updateHUD();
+    draw();
+}
+
+function gameOver(message) {
+    gameState.gameOver = true;
+    alert(message + "\n\nReturning to menu...");
+    setTimeout(() => showMenu(), 1000);
 }
 
 // --- DRAWING & CAMERA ---
@@ -158,6 +433,7 @@ function initInput() {
             draw();
         }
     };
+    
     canvas.addEventListener('mousedown', start);
     canvas.addEventListener('touchstart', start, {passive: false});
     window.addEventListener('mousemove', move);
@@ -172,7 +448,9 @@ function initInput() {
 
 function draw() {
     if (!currentMapData || document.getElementById('game-screen').classList.contains('hidden')) return;
-    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    
+    canvas.width = window.innerWidth; 
+    canvas.height = window.innerHeight;
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.scale(camera.zoom, camera.zoom);
@@ -183,17 +461,122 @@ function draw() {
     const startX = -(map.cols * size) / 2;
     const startY = -(map.rows * size) / 2;
 
+    // Draw tiles
     map.grid.forEach((id, i) => {
         const x = startX + (i % map.cols) * size;
         const y = startY + Math.floor(i / map.cols) * size;
-        ctx.fillStyle = TILE_DATA[id]?.color || '#000';
-        ctx.fillRect(x, y, size, size);
+        const tileInfo = TILE_DATA[id];
+        
+        if (tileInfo) {
+            ctx.fillStyle = tileInfo.color;
+            ctx.fillRect(x, y, size, size);
+            
+            // Add tile labels for special tiles
+            if (id >= 99) {
+                ctx.fillStyle = 'white';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(tileInfo.name.charAt(0).toUpperCase(), x + size/2, y + size/2);
+            }
+        }
+        
         ctx.strokeStyle = "rgba(255,255,255,0.05)";
         ctx.strokeRect(x, y, size, size);
     });
+
+    // Draw enemies
+    gameState.enemies.forEach(enemy => {
+        const x = startX + enemy.x * size;
+        const y = startY + enemy.y * size;
+        
+        // Enemy body
+        ctx.fillStyle = enemy.type === 'boss' ? '#ff8844' : '#ff4444';
+        ctx.beginPath();
+        ctx.arc(x + size/2, y + size/2, size/3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Enemy eyes (vision cone)
+        ctx.strokeStyle = 'rgba(255,100,100,0.3)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x + size/2, y + size/2);
+        ctx.lineTo(x + size/2 + size * 1.5, y + size/2);
+        ctx.stroke();
+        
+        // Enemy label
+        ctx.fillStyle = 'white';
+        ctx.font = '8px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(enemy.type.toUpperCase(), x + size/2, y - 5);
+    });
+
+    // Draw objectives
+    gameState.objectives.forEach(obj => {
+        const x = startX + obj.x * size;
+        const y = startY + obj.y * size;
+        
+        ctx.fillStyle = obj.type === 'documents' ? '#ffff00' : 
+                       obj.type === 'target' ? '#aa00ff' : '#ffaa00';
+        ctx.beginPath();
+        ctx.arc(x + size/2, y + size/2, size/4, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Check if completed
+        if (gameState.completed.includes(obj.name)) {
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x + size/4, y + size/2);
+            ctx.lineTo(x + size/2, y + size*3/4);
+            ctx.lineTo(x + size*3/4, y + size/4);
+            ctx.stroke();
+        }
+    });
+
+    // Draw player
+    const playerX = startX + gameState.player.x * size;
+    const playerY = startY + gameState.player.y * size;
+    
+    if (gameState.player.hidden) {
+        ctx.fillStyle = 'rgba(100,100,100,0.5)';
+        ctx.strokeStyle = 'rgba(200,200,200,0.5)';
+    } else if (gameState.player.spotted) {
+        ctx.fillStyle = '#ff0000';
+        ctx.strokeStyle = '#ff8888';
+    } else {
+        ctx.fillStyle = '#00ff00';
+        ctx.strokeStyle = '#88ff88';
+    }
+    
+    ctx.beginPath();
+    ctx.arc(playerX + size/2, playerY + size/2, size/3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Player health bar
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(playerX, playerY - 8, size, 4);
+    ctx.fillStyle = '#00ff00';
+    ctx.fillRect(playerX, playerY - 8, size * (gameState.player.health / 100), 4);
+
     ctx.restore();
+    
+    // Update character circle position indicator
+    const circle = document.getElementById('char-circle');
+    const screenX = (playerX + size/2) * camera.zoom + canvas.width/2 + camera.x * camera.zoom;
+    const screenY = (playerY + size/2) * camera.zoom + canvas.height/2 + camera.y * camera.zoom;
+    
+    circle.style.left = (screenX - 32) + 'px';
+    circle.style.top = (screenY - 100) + 'px'; // Above toolbar
 }
 
-function gameAction(a) { alert("Action: " + a); }
-function togglePause(p) { document.getElementById('pause-screen').classList.toggle('hidden', !p); }
-window.onload = () => { initInput(); window.onresize = draw; };
+function togglePause(p) { 
+    document.getElementById('pause-screen').classList.toggle('hidden', !p); 
+}
+
+// Initialize
+window.onload = () => { 
+    initInput(); 
+    window.onresize = draw;
+};
