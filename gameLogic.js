@@ -22,12 +22,12 @@ class Game {
         this.timesSpotted = 0;
         this.missionCompleted = false;
         
-        Player.resetTurn();
+        Player.startTurn(); // Auto-start move mode
         this.updateHUD();
         this.showToolbar(true);
         
         // Initial camera focus
-        Camera.focusOn(Player.x, Player.y);
+        Camera.smoothFocusOn(Player.x, Player.y);
         
         Game.showFeedback("Mission started. Your turn.");
     }
@@ -37,7 +37,8 @@ class Game {
         
         if (this.currentTurn === 'player') {
             // Player's turn ended
-            Player.actionPoints = 0;
+            canvas.onclick = null; // Clear any click handlers
+            Game.clearHighlights();
             
             // Update items
             Items.updateItems();
@@ -54,7 +55,7 @@ class Game {
                 EnemyManager.takeTurns().then(() => {
                     // Enemy turn finished
                     this.currentTurn = 'player';
-                    Player.resetTurn();
+                    Player.startTurn(); // Auto-start move for next turn
                     this.showToolbar(true);
                     
                     // Check win/lose conditions
@@ -65,7 +66,6 @@ class Game {
                     draw();
                 });
             }, 1000);
-            
         }
         
         this.updateHUD();
@@ -83,6 +83,11 @@ class Game {
         if (turnEl) {
             turnEl.textContent = show ? 'Player' : 'Enemy';
             turnEl.style.color = show ? '#00ff00' : '#ff0000';
+        }
+        
+        // Update player toolbar buttons
+        if (show) {
+            Player.updateToolbarButtons();
         }
     }
     
@@ -189,7 +194,13 @@ class Game {
         if (currentMapData.objectives) {
             currentMapData.objects?.forEach(obj => {
                 if (obj.type === 'documents' || obj.type === 'steal') {
-                    if (!Items.placedItems.some(i => i.type === 'documents' && i.x === Player.x && i.y === Player.y)) {
+                    // Check if player has the item
+                    const hasItem = Items.placedItems.some(i => 
+                        i.type === 'documents' && 
+                        i.x === Player.x && 
+                        i.y === Player.y
+                    );
+                    if (!hasItem) {
                         canExit = false;
                         missingObjectives.push(`Need to steal: ${obj.name}`);
                     }
@@ -243,9 +254,12 @@ class Game {
         if (currentMapData.objects) {
             currentMapData.objects.forEach(obj => {
                 if (obj.type === 'documents' || obj.type === 'steal') {
-                    if (Items.placedItems.some(i => i.type === 'documents' && i.x === Player.x && i.y === Player.y)) {
-                        completed++;
-                    }
+                    const hasItem = Items.placedItems.some(i => 
+                        i.type === 'documents' && 
+                        i.x === Player.x && 
+                        i.y === Player.y
+                    );
+                    if (hasItem) completed++;
                 }
                 
                 if (obj.type === 'target') {
@@ -322,130 +336,11 @@ class Game {
     }
 }
 
-// Update the global draw function
-function draw() {
-    if (!currentMapData || document.getElementById('game-screen').classList.contains('hidden')) return;
-    
-    canvas.width = window.innerWidth; 
-    canvas.height = window.innerHeight;
-    
-    // Update camera and effects
-    Camera.update();
-    Effects.update();
-    
-    Camera.applyTransform();
-    
-    const map = currentMapData;
-    const size = map.tilesize;
-    const startX = -(map.cols * size) / 2;
-    const startY = -(map.rows * size) / 2;
-    
-    // Draw tiles with Tenchu-style colors
-    map.grid.forEach((id, i) => {
-        const x = startX + (i % map.cols) * size;
-        const y = startY + Math.floor(i / map.cols) * size;
-        const tileInfo = TILE_DATA[id];
-        
-        if (tileInfo) {
-            // Tenchu-style color scheme
-            let color = tileInfo.color;
-            if (id === 0) color = '#2a2a2a'; // Darker floor
-            if (id === 20) color = '#000000'; // Black walls
-            if (id === 99) color = '#ff3300'; // Red exit
-            if (id === 100) color = '#00aa00'; // Green start
-            
-            ctx.fillStyle = color;
-            ctx.fillRect(x, y, size, size);
-            
-            // Add texture for certain tiles
-            if (id === 50) { // Grass
-                ctx.fillStyle = 'rgba(0, 100, 0, 0.3)';
-                for (let j = 0; j < 5; j++) {
-                    const bladeX = x + Math.random() * size;
-                    const bladeY = y + Math.random() * size;
-                    ctx.fillRect(bladeX, bladeY, 1, 3);
-                }
-            }
-        }
-        
-        // Draw tile border
-        ctx.strokeStyle = "rgba(255,255,255,0.05)";
-        ctx.strokeRect(x, y, size, size);
-    });
-    
-    // Draw highlighted tiles
-    Game.highlightedTiles.forEach(tile => {
-        const x = startX + tile.x * size;
-        const y = startY + tile.y * size;
-        
-        ctx.fillStyle = tile.color;
-        ctx.globalAlpha = tile.alpha;
-        ctx.fillRect(x, y, size, size);
-        ctx.globalAlpha = 1;
-    });
-    
-    // Draw enemies
-    EnemyManager.drawAll(ctx, startX, startY, size);
-    
-    // Draw items
-    Items.drawAll(ctx, startX, startY, size);
-    
-    // Draw player
-    const playerX = startX + Player.x * size;
-    const playerY = startY + Player.y * size;
-    
-    // Player with Tenchu-style appearance
-    if (Player.hidden) {
-        ctx.fillStyle = 'rgba(0,0,0,0.7)';
-        ctx.strokeStyle = 'rgba(100,100,100,0.5)';
-    } else if (Player.spotted) {
-        ctx.fillStyle = '#ff0000';
-        ctx.strokeStyle = '#ff6666';
-    } else {
-        ctx.fillStyle = '#00aa00';
-        ctx.strokeStyle = '#00ff00';
-    }
-    
-    // Draw player as ninja silhouette
-    ctx.beginPath();
-    ctx.arc(playerX + size/2, playerY + size/2, size/3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    
-    // Draw player health bar
-    ctx.fillStyle = '#ff0000';
-    ctx.fillRect(playerX, playerY - 8, size, 4);
-    ctx.fillStyle = '#00ff00';
-    ctx.fillRect(playerX, playerY - 8, size * (Player.health / Player.maxHealth), 4);
-    
-    // Draw health text
-    ctx.fillStyle = 'white';
-    ctx.font = '10px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${Player.health}/${Player.maxHealth}`, playerX + size/2, playerY - 10);
-    
-    // Draw effects
-    Effects.drawAll(ctx, startX, startY, size);
-    
-    Camera.restoreTransform();
-}
-
-// Update the global startGame function
-function startGame() {
-    if (!currentMapData) return;
-    
-    Game.init();
-    Game.start();
-    switchScreen('game-screen');
-    draw();
-}
-
 // Update the toolbar update function
 function updateToolbar() {
     const container = document.getElementById('dynamic-items');
     container.innerHTML = inventory.map(item => `
-        <div class="tool-btn special" onclick="Items.useItem('${item.id}')">
+        <div class="tool-btn special" onclick="Player.startItemUse('${item.id}')">
             ${item.icon}<br>USE
             <div class="qty-badge">${item.qty}</div>
         </div>
@@ -457,26 +352,31 @@ function showTutorial() {
     alert(`TENCHU-STYLE STEALTH GAME CONTROLS:
 
 MOVEMENT:
-- Click MOVE button to highlight movable tiles (3 tiles max)
-- Click on green highlighted tile to move
+- Automatically starts in move mode each turn
+- Click on green highlighted tiles to move (3 tiles max)
 - Each tile costs 1 Action Point (AP)
 
 STEALTH:
-- Stand on dark/shaded tiles to hide
-- Click HIDE button when on hiding spot
+- Automatically hide when standing on dark/shaded tiles
 - Hidden enemies can't see you
+- Hidden + close to enemy = STEALTH KILL opportunity
 
 COMBAT:
-- Click ATTACK to highlight enemies in range (1 tile)
-- Hidden + close to unaware enemy = STEALTH KILL (instant)
-- Regular attack damages enemy, alerts others
+- Click ATTACK when enemies are in range (1 tile)
+- Hidden + close to unaware enemy = STEALTH KILL (instant, no AP cost)
+- Regular attack costs 1 AP, alerts enemies
 
 ITEMS:
 - Use items from toolbar (3 tile range)
-- Bomb: Explodes after 1-3 turns, damages enemies
-- Gas: Sleep gas, makes enemies vulnerable
-- Trap: Instant kill when stepped on
-- Rice: Distracts enemies, poisoned
+- Selecting an item shows yellow placement tiles
+- Click to place item
+- Item use automatically ends turn
+
+CAMERA:
+- Drag to pan
+- Pinch or scroll to zoom
+- Camera focuses on current unit
+- Can override focus by interacting (returns after 2 seconds)
 
 ENEMY STATES:
 - Green: Normal patrol
