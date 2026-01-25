@@ -16,10 +16,16 @@ class Camera {
     static init() {
         this.reset();
         
-        // Input handlers for panning and zooming
+        // Only attach events to canvas, not toolbar
         const getPos = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
         
         const start = (e) => {
+            // Check if click is on toolbar
+            const toolbar = document.getElementById('toolbar');
+            if (toolbar && toolbar.contains(e.target)) {
+                return; // Don't handle camera on toolbar clicks
+            }
+            
             this.userInteracted = true;
             this.cancelReturnToFocus();
             
@@ -32,6 +38,8 @@ class Camera {
         };
         
         const move = (e) => {
+            if (!this.isDragging && !(e.touches && e.touches.length === 2)) return;
+            
             if (e.touches && e.touches.length === 2) {
                 const curDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
                 if (this.touchDist > 0) {
@@ -73,15 +81,15 @@ class Camera {
         
         canvas.addEventListener('mousedown', start);
         canvas.addEventListener('touchstart', start, {passive: false});
-        window.addEventListener('mousemove', move);
-        window.addEventListener('touchmove', (e) => { 
+        canvas.addEventListener('mousemove', move);
+        canvas.addEventListener('touchmove', (e) => { 
             if(e.touches.length > 1) e.preventDefault(); 
             move(e); 
         }, {passive: false});
         window.addEventListener('mouseup', end);
         window.addEventListener('touchend', end);
         
-        window.addEventListener('wheel', e => {
+        canvas.addEventListener('wheel', e => {
             this.userInteracted = true;
             this.cancelReturnToFocus();
             
@@ -128,6 +136,8 @@ class Camera {
             this.x = targetCamX;
             this.y = targetCamY;
         }
+        
+        draw();
     }
     
     static smoothFocusOn(x, y) {
@@ -141,7 +151,7 @@ class Camera {
         this.cancelReturnToFocus();
         this.returnTimer = setTimeout(() => {
             this.userInteracted = false;
-        }, 2000); // Return to focus after 2 seconds of inactivity
+        }, 2000);
     }
     
     static cancelReturnToFocus() {
@@ -201,7 +211,7 @@ class Camera {
     
     static shake(amount, duration) {
         this.shakeAmount = amount;
-        this.shakeTimer = duration / 16; // Convert ms to frames (assuming 60fps)
+        this.shakeTimer = duration / 16;
     }
     
     static reset() {
@@ -219,6 +229,7 @@ class Camera {
             const size = currentMapData.tilesize;
             this.x = -((Player.x * size) - canvas.width/2);
             this.y = -((Player.y * size) - canvas.height/2);
+            this.smoothFocusOn(Player.x, Player.y);
         }
     }
 }
