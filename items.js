@@ -1,27 +1,23 @@
 class Items {
     static placedItems = [];
     static itemCounter = 0;
-    static currentItemUse = null;
     
     static useItem(itemId) {
-        if (Game.currentTurn !== 'player' || Player.actionPoints <= 0) return;
+        if (Game.currentTurn !== 'player' || Player.actionPoints <= 0 || Player.moving) return;
         
-        Player.currentAction = 'item';
-        this.currentItemUse = itemId;
-        this.prepareItemUse(itemId);
-    }
-    
-    static prepareItemUse(itemId) {
         const item = inventory.find(i => i.id === itemId);
         if (!item || item.qty <= 0) return;
+        
+        Player.currentAction = 'item';
+        canvas.onclick = null;
+        Game.clearHighlights();
         
         // Calculate usable tiles (3 tiles range)
         const usableTiles = this.getUsableTiles();
         
         if (usableTiles.length === 0) {
-            Game.showFeedback("No usable tiles in range!");
+            showFeedback("No usable tiles in range!");
             Player.currentAction = null;
-            this.currentItemUse = null;
             return;
         }
         
@@ -44,11 +40,10 @@ class Items {
                 canvas.onclick = null;
                 Game.clearHighlights();
                 Player.currentAction = null;
-                this.currentItemUse = null;
             }
         };
         
-        Game.showFeedback(`Select where to place ${item.name} (Yellow highlights)`);
+        showFeedback(`Select where to place ${item.name} (Yellow highlights)`);
     }
     
     static getUsableTiles() {
@@ -119,7 +114,7 @@ class Items {
         Effects.createPlacement(x, y, item.icon);
         Sound.play('item_place');
         Camera.smoothFocusOn(x, y);
-        Game.showFeedback(`${item.name} placed at (${x}, ${y})`);
+        showFeedback(`${item.name} placed at (${x}, ${y})`);
         
         // Update toolbar
         updateToolbar();
@@ -135,7 +130,7 @@ class Items {
         switch(effect) {
             case 'bomb': return 1 + Math.floor(Math.random() * 3);
             case 'gas': return 1;
-            case 'trap': return 999; // Permanent until triggered
+            case 'trap': return 999;
             case 'rice': return 4 + Math.floor(Math.random() * 3);
             default: return 0;
         }
@@ -145,8 +140,8 @@ class Items {
         switch(effect) {
             case 'bomb': return 2;
             case 'gas': return 1;
-            case 'trap': return 0; // Only affects the tile it's on
-            case 'rice': return 2; // Attraction range
+            case 'trap': return 0;
+            case 'rice': return 2;
             default: return 1;
         }
     }
@@ -160,7 +155,7 @@ class Items {
             Effects.createExplosion(x, y, 1);
             Sound.play('trap_trigger');
             Camera.shake(5, 300);
-            Game.showFeedback("Stepped on a trap!");
+            showFeedback("Stepped on a trap!");
         }
     }
     
@@ -170,7 +165,6 @@ class Items {
             const item = this.placedItems[i];
             
             if (item.active) {
-                // Already activated items disappear
                 this.placedItems.splice(i, 1);
                 continue;
             }
@@ -212,8 +206,8 @@ class Items {
         // Damage enemies in range
         const enemies = EnemyManager.getEnemiesInRange(item.x, item.y, item.range);
         enemies.forEach(enemy => {
-            if (enemy.takeDamage(50)) {
-                Game.showFeedback(`${enemy.type} killed by explosion!`);
+            if (enemy.takeDamage(50, false)) {
+                showFeedback(`${enemy.type} killed by explosion!`);
             } else {
                 enemy.alerted = true;
                 enemy.state = 'alerted';
@@ -222,19 +216,7 @@ class Items {
             }
         });
         
-        // Alert other enemies
-        const allEnemies = EnemyManager.enemies.filter(e => !enemies.includes(e));
-        allEnemies.forEach(enemy => {
-            const dist = Math.abs(enemy.x - item.x) + Math.abs(enemy.y - item.y);
-            if (dist <= item.range + 3) {
-                enemy.alerted = true;
-                enemy.state = 'alerted';
-                enemy.alertTimer = 2;
-                enemy.lastKnownPlayerPos = { x: item.x, y: item.y };
-            }
-        });
-        
-        Game.showFeedback("Bomb exploded!");
+        showFeedback("Bomb exploded!");
     }
     
     static activateGas(item) {
@@ -249,12 +231,11 @@ class Items {
             enemy.state = 'patrol';
             enemy.feedback = "Feeling sleepy...";
             
-            // Mark as sleeping (special state for easy stealth kills)
             enemy.sleeping = true;
             enemy.sleepTimer = 2 + Math.floor(Math.random() * 4);
         });
         
-        Game.showFeedback("Sleep gas released!");
+        showFeedback("Sleep gas released!");
     }
     
     static activateRice(item) {
@@ -270,22 +251,21 @@ class Items {
             enemy.feedback = "What's that smell?";
         });
         
-        Game.showFeedback("Rice ball placed!");
+        showFeedback("Rice ball placed!");
     }
     
     static checkEnemyInteractions() {
         this.placedItems.forEach(item => {
             if (item.type === 'trap') {
-                // Check if enemy stepped on trap
                 const enemies = EnemyManager.getEnemiesInRange(item.x, item.y, 0);
                 enemies.forEach(enemy => {
                     if (!item.active) {
                         item.active = true;
-                        if (enemy.takeDamage(999)) {
+                        if (enemy.takeDamage(999, false)) {
                             Camera.smoothFocusOn(item.x, item.y);
                             Effects.createBlood(enemy.x, enemy.y);
                             Sound.play('trap_trigger');
-                            Game.showFeedback(`${enemy.type} killed by trap!`);
+                            showFeedback(`${enemy.type} killed by trap!`);
                             EnemyManager.removeEnemy(enemy.id);
                         }
                     }
@@ -293,11 +273,9 @@ class Items {
             }
             
             if (item.type === 'rice' && !item.active) {
-                // Check if enemy reached rice
                 const enemies = EnemyManager.getEnemiesInRange(item.x, item.y, 0);
                 enemies.forEach(enemy => {
                     if (enemy.x === item.x && enemy.y === item.y) {
-                        // Enemy eats poisoned rice
                         item.active = true;
                         enemy.feedback = "Yummy rice...";
                         enemy.poisoned = true;
@@ -312,9 +290,9 @@ class Items {
             if (enemy.poisoned) {
                 enemy.poisonTimer--;
                 if (enemy.poisonTimer <= 0) {
-                    if (enemy.takeDamage(999)) {
+                    if (enemy.takeDamage(999, false)) {
                         Effects.createBlood(enemy.x, enemy.y);
-                        Game.showFeedback(`${enemy.type} died from poisoning!`);
+                        showFeedback(`${enemy.type} died from poisoning!`);
                         EnemyManager.removeEnemy(enemy.id);
                     }
                 }
