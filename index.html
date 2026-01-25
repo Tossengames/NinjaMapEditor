@@ -36,6 +36,14 @@
 
         button { padding: 12px 30px; font-weight: bold; cursor: pointer; background: var(--gold); border: none; border-radius: 5px; margin: 10px; font-size: 1rem; }
         .btn-secondary { background: #555; color: white; }
+
+        /* Game HUD */
+        #game-hud { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 8px; border: 1px solid #444; font-size: 0.8rem; z-index: 20; }
+        .hud-row { display: flex; gap: 10px; margin: 2px 0; }
+        .status { padding: 2px 6px; border-radius: 3px; }
+        .status.good { background: #1a3a1a; color: #4cff4c; }
+        .status.bad { background: #3a1a1a; color: #ff4c4c; }
+        .status.warning { background: #3a3a1a; color: #ffcc00; }
     </style>
 </head>
 <body>
@@ -56,8 +64,10 @@
         <h2 id="info-name" style="color: var(--gold);"></h2>
         <p id="info-story" style="font-style: italic; color: #aaa; max-width: 500px;"></p>
         <div style="background: #111; padding: 15px; border-left: 4px solid var(--gold); text-align: left; margin: 20px; width: 80%; max-width: 400px;">
-            <strong>Mission Objectives:</strong>
+            <strong>Rules:</strong>
             <p id="info-rules" style="margin: 5px 0 0 0; font-size: 0.9rem; color: #ddd;"></p>
+            <strong style="margin-top: 10px; display: block;">Objectives:</strong>
+            <p id="info-objectives" style="margin: 5px 0 0 0; font-size: 0.9rem; color: #ddd;"></p>
         </div>
         <button onclick="showItemSelection()">PREPARE GEAR</button>
         <button class="btn-secondary" onclick="switchScreen('mission-screen')">BACK</button>
@@ -78,11 +88,17 @@
     </div>
 
     <div id="game-screen" class="hidden">
+        <div id="game-hud">
+            <div class="hud-row"><strong>Mission:</strong> <span id="hud-name"></span></div>
+            <div class="hud-row"><strong>Status:</strong> <span id="hud-status" class="status good">HIDDEN</span></div>
+            <div class="hud-row"><strong>Objectives:</strong> <span id="hud-objectives">0/0</span></div>
+        </div>
         <button style="position:fixed; top:10px; right:10px; z-index:20; padding:8px;" onclick="togglePause(true)">PAUSE</button>
         <canvas id="gameCanvas"></canvas>
         <div id="char-circle">👤</div>
         <div id="toolbar">
-            <div class="tool-btn" onclick="gameAction('attack')">⚔️<br>ATTACK</div>
+            <div class="tool-btn" onclick="gameAction('move')">👣<br>MOVE</div>
+            <div class="tool-btn" onclick="gameAction('hide')">🫥<br>HIDE</div>
             <div class="tool-btn" onclick="gameAction('wait')">⏳<br>WAIT</div>
             <div id="dynamic-items" style="display:flex; gap:10px;"></div>
         </div>
