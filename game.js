@@ -36,7 +36,10 @@ let inventory = [];
 // Navigation functions
 function switchScreen(id) {
     document.querySelectorAll('.screen, #game-screen').forEach(s => s.classList.add('hidden'));
-    document.getElementById(id).classList.remove('hidden');
+    const screen = document.getElementById(id);
+    if (screen) {
+        screen.classList.remove('hidden');
+    }
     
     // Update pause screen if showing
     if (id === 'pause-screen' && currentMapData) {
@@ -52,7 +55,9 @@ function showMenu() {
 function showMissionList() {
     switchScreen('mission-screen');
     const list = document.getElementById('level-list');
-    list.innerHTML = levelFiles.map(f => `<div class="list-item" onclick="loadMission('${f}')">${f.replace('.json', '').toUpperCase()}</div>`).join('');
+    if (list) {
+        list.innerHTML = levelFiles.map(f => `<div class="list-item" onclick="loadMission('${f}')">${f.replace('.json', '').toUpperCase()}</div>`).join('');
+    }
 }
 
 async function loadMission(file) {
@@ -78,12 +83,14 @@ function showItemSelection() {
     switchScreen('item-screen');
     inventory = [];
     const grid = document.getElementById('item-grid');
-    grid.innerHTML = AVAILABLE_ITEMS.map(item => `
-        <div class="item-card" id="card-${item.id}" onclick="addItem('${item.id}')">
-            <div style="font-size:24px">${item.icon}</div>
-            <div>${item.name}</div>
-        </div>
-    `).join('');
+    if (grid) {
+        grid.innerHTML = AVAILABLE_ITEMS.map(item => `
+            <div class="item-card" id="card-${item.id}" onclick="addItem('${item.id}')">
+                <div style="font-size:24px">${item.icon}</div>
+                <div>${item.name}</div>
+            </div>
+        `).join('');
+    }
     updateInvUI();
 }
 
@@ -123,16 +130,18 @@ function updateInvUI() {
     const totalQty = inventory.reduce((sum, i) => sum + i.qty, 0);
     document.getElementById('total-qty-label').innerText = `Total: ${totalQty} / 5`;
     
-    display.innerHTML = "";
-    for (let i = 0; i < 3; i++) {
-        const item = inventory[i];
-        const slot = document.createElement('div');
-        slot.className = `slot ${item ? 'filled' : ''}`;
-        if (item) {
-            slot.innerHTML = `${item.icon}<div class="qty-badge">${item.qty}</div>`;
-            slot.onclick = () => removeItem(item.id);
+    if (display) {
+        display.innerHTML = "";
+        for (let i = 0; i < 3; i++) {
+            const item = inventory[i];
+            const slot = document.createElement('div');
+            slot.className = `slot ${item ? 'filled' : ''}`;
+            if (item) {
+                slot.innerHTML = `${item.icon}<div class="qty-badge">${item.qty}</div>`;
+                slot.onclick = () => removeItem(item.id);
+            }
+            display.appendChild(slot);
         }
-        display.appendChild(slot);
     }
 
     AVAILABLE_ITEMS.forEach(it => {
@@ -144,18 +153,20 @@ function updateInvUI() {
     updateToolbar();
 }
 
-// Update toolbar function - EXACTLY like original
+// Update toolbar function
 function updateToolbar() {
     const container = document.getElementById('dynamic-items');
-    container.innerHTML = inventory.map(item => `
-        <div class="tool-btn special" onclick="useItem('${item.id}')">
-            ${item.icon}<br>${item.name.split(' ')[0]}
-            <div class="qty-badge">${item.qty}</div>
-        </div>
-    `).join('');
+    if (container) {
+        container.innerHTML = inventory.map(item => `
+            <div class="tool-btn special" onclick="useItem('${item.id}')">
+                ${item.icon}<br>${item.name.split(' ')[0]}
+                <div class="qty-badge">${item.qty}</div>
+            </div>
+        `).join('');
+    }
 }
 
-// Item use function - like original
+// Item use function
 function useItem(id) {
     if (Game.currentTurn !== 'player') return;
     
@@ -165,14 +176,30 @@ function useItem(id) {
     Items.useItem(id);
 }
 
-// Start game
+// Start game - FIXED VERSION
 function startGame() {
-    if (!currentMapData) return;
+    if (!currentMapData) {
+        showFeedback("No mission loaded!");
+        return;
+    }
     
-    Game.init();
-    Game.start();
-    switchScreen('game-screen');
-    draw();
+    try {
+        Game.init();
+        Game.start();
+        switchScreen('game-screen');
+        
+        // Force initial draw
+        setTimeout(() => {
+            if (canvas) {
+                draw();
+            }
+        }, 100);
+        
+        console.log("Game started successfully!");
+    } catch (error) {
+        console.error("Error starting game:", error);
+        showFeedback(`Error starting game: ${error.message}`);
+    }
 }
 
 // Pause function
@@ -184,16 +211,25 @@ function togglePause(p) {
 function updatePauseScreen() {
     if (!currentMapData) return;
     
-    document.getElementById('pause-name').textContent = currentMapData.name;
-    document.getElementById('pause-status').textContent = Player.hidden ? 'HIDDEN' : Player.spotted ? 'SPOTTED' : 'VISIBLE';
-    document.getElementById('pause-health').textContent = `${Player.health}/${Player.maxHealth}`;
-    document.getElementById('pause-ap').textContent = `${Player.actionPoints}/${Player.maxActionPoints}`;
-    document.getElementById('pause-objectives-count').textContent = `${Game.getCompletedObjectives()}/${Game.getObjectiveCount()}`;
-    document.getElementById('pause-turn').textContent = Game.currentTurn === 'player' ? 'Player' : 'Enemy';
-    document.getElementById('pause-stealth').textContent = Player.stealthKills;
-    document.getElementById('pause-combat').textContent = Player.combatKills;
-    document.getElementById('pause-rules').textContent = currentMapData.rules ? currentMapData.rules.join(', ') : 'None';
-    document.getElementById('pause-objectives').textContent = currentMapData.objectives ? currentMapData.objectives.join(', ') : 'None';
+    const elements = {
+        'pause-name': currentMapData.name,
+        'pause-status': Player.hidden ? 'HIDDEN' : Player.spotted ? 'SPOTTED' : 'VISIBLE',
+        'pause-health': `${Player.health}/${Player.maxHealth}`,
+        'pause-ap': `${Player.actionPoints}/${Player.maxActionPoints}`,
+        'pause-objectives-count': `${Game.getCompletedObjectives()}/${Game.getObjectiveCount()}`,
+        'pause-turn': Game.currentTurn === 'player' ? 'Player' : 'Enemy',
+        'pause-stealth': Player.stealthKills,
+        'pause-combat': Player.combatKills,
+        'pause-rules': currentMapData.rules ? currentMapData.rules.join(', ') : 'None',
+        'pause-objectives': currentMapData.objectives ? currentMapData.objectives.join(', ') : 'None'
+    };
+    
+    Object.entries(elements).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = value;
+        }
+    });
 }
 
 // Show feedback without browser alerts
@@ -224,5 +260,9 @@ function showFeedback(text) {
 
 // Initialize on load
 window.onload = () => { 
-    window.onresize = draw;
+    // Make sure canvas exists before setting resize handler
+    if (canvas) {
+        window.onresize = draw;
+    }
+    console.log("Game loaded successfully!");
 };
