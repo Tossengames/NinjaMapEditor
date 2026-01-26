@@ -7,33 +7,88 @@ class Game {
     static missionCompleted = false;
     
     static init() {
-        Camera.init();
-        Effects.init();
-        Player.init();
-        EnemyManager.init();
-        Items.placedItems = [];
+        console.log("Initializing game...");
+        try {
+            Camera.init();
+            Effects.init();
+            Player.init();
+            EnemyManager.init();
+            Items.placedItems = [];
+            console.log("Game initialized successfully");
+        } catch (error) {
+            console.error("Error initializing game:", error);
+        }
     }
     
     static start() {
+        console.log("Starting game...");
         this.gameActive = true;
         this.currentTurn = 'player';
         this.turnsTaken = 0;
         this.timesSpotted = 0;
         this.missionCompleted = false;
+        this.highlightedTiles = [];
+        
+        // Reset player position from map data
+        if (currentMapData && currentMapData.player) {
+            Player.x = currentMapData.player.x;
+            Player.y = currentMapData.player.y;
+        }
+        
+        // Reset player state
+        Player.health = 100;
+        Player.maxHealth = 100;
+        Player.hidden = false;
+        Player.spotted = false;
+        Player.inHiding = false;
+        Player.actionPoints = 3;
+        Player.maxActionPoints = 3;
+        Player.stealthKills = 0;
+        Player.combatKills = 0;
+        Player.itemsUsed = 0;
+        Player.currentAction = null;
+        Player.moving = false;
+        Player.movePath = [];
+        Player.moveStep = 0;
+        
+        // Reset enemies
+        EnemyManager.init();
+        
+        // Reset items
+        Items.placedItems = [];
+        Items.itemCounter = 0;
         
         // Start camera on player
         Camera.reset();
         Camera.smoothFocusOn(Player.x, Player.y);
         
-        Player.startTurn();
+        // Update player circle
+        Player.updateCircle();
+        
+        // Update toolbar buttons
+        Player.updateToolbarButtons();
+        
+        // Show toolbar
         this.showToolbar(true);
         
+        // Update toolbar items
+        updateToolbar();
+        
         showFeedback("Mission started. Your turn.");
-        draw();
+        console.log("Game started successfully");
+        
+        // Force a redraw
+        setTimeout(() => {
+            if (canvas) {
+                draw();
+            }
+        }, 50);
     }
     
     static async endTurn() {
         if (!this.gameActive) return;
+        
+        console.log("Ending turn...");
         
         if (this.currentTurn === 'player') {
             // Player's turn ended
@@ -60,6 +115,7 @@ class Game {
             this.checkGameState();
             
             if (this.gameActive) {
+                Player.resetTurn();
                 Player.startTurn();
                 this.showToolbar(true);
                 Camera.smoothFocusOn(Player.x, Player.y);
@@ -148,28 +204,30 @@ class Game {
         
         // Check objectives
         if (currentMapData.objectives) {
-            currentMapData.objects?.forEach(obj => {
-                if (obj.type === 'documents' || obj.type === 'steal') {
-                    // Check if player has the item
-                    const hasItem = Items.placedItems.some(i => 
-                        (i.type === 'documents' || i.type === obj.type) && 
-                        i.x === Player.x && 
-                        i.y === Player.y
-                    );
-                    if (!hasItem) {
-                        canExit = false;
-                        missingObjectives.push(`Need to steal: ${obj.name}`);
+            if (currentMapData.objects) {
+                currentMapData.objects.forEach(obj => {
+                    if (obj.type === 'documents' || obj.type === 'steal') {
+                        // Check if player has the item
+                        const hasItem = Items.placedItems.some(i => 
+                            (i.type === 'documents' || i.type === obj.type) && 
+                            i.x === Player.x && 
+                            i.y === Player.y
+                        );
+                        if (!hasItem) {
+                            canExit = false;
+                            missingObjectives.push(`Need to steal: ${obj.name}`);
+                        }
                     }
-                }
-                
-                if (obj.type === 'target') {
-                    const targetEnemy = EnemyManager.enemies.find(e => e.x === obj.x && e.y === obj.y);
-                    if (targetEnemy) {
-                        canExit = false;
-                        missingObjectives.push(`Target still alive: ${obj.name}`);
+                    
+                    if (obj.type === 'target') {
+                        const targetEnemy = EnemyManager.enemies.find(e => e.x === obj.x && e.y === obj.y);
+                        if (targetEnemy) {
+                            canExit = false;
+                            missingObjectives.push(`Target still alive: ${obj.name}`);
+                        }
                     }
-                }
-            });
+                });
+            }
             
             if (currentMapData.objectives.includes("kill all enemies") && EnemyManager.enemies.length > 0) {
                 canExit = false;
@@ -253,13 +311,22 @@ class Game {
         else if (totalScore >= 600) rank = "青龍の忍";
         
         // Update win screen
-        document.getElementById('score-stealth').textContent = stealthKills;
-        document.getElementById('score-combat').textContent = combatKills;
-        document.getElementById('score-spotted').textContent = this.timesSpotted;
-        document.getElementById('score-turns').textContent = this.turnsTaken;
-        document.getElementById('score-items').textContent = Player.itemsUsed;
-        document.getElementById('score-total').textContent = totalScore;
-        document.getElementById('rank-display').textContent = rank;
+        const elements = {
+            'score-stealth': stealthKills,
+            'score-combat': combatKills,
+            'score-spotted': this.timesSpotted,
+            'score-turns': this.turnsTaken,
+            'score-items': Player.itemsUsed,
+            'score-total': totalScore,
+            'rank-display': rank
+        };
+        
+        Object.entries(elements).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+            }
+        });
         
         switchScreen('win-screen');
     }
@@ -267,7 +334,10 @@ class Game {
     static gameOver(reason) {
         this.gameActive = false;
         
-        document.getElementById('gameover-reason').textContent = reason;
+        const reasonElement = document.getElementById('gameover-reason');
+        if (reasonElement) {
+            reasonElement.textContent = reason;
+        }
         switchScreen('gameover-screen');
     }
     
@@ -276,6 +346,9 @@ class Game {
             updatePauseScreen();
         }
         
-        document.getElementById('pause-screen').classList.toggle('hidden', !show);
+        const pauseScreen = document.getElementById('pause-screen');
+        if (pauseScreen) {
+            pauseScreen.classList.toggle('hidden', !show);
+        }
     }
 }
